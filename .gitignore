@@ -1,0 +1,26 @@
+# Сборка .NET / Visual Studio
+bin/
+obj/
+out/
+publish/
+artifacts/
+*.user
+*.suo
+*.rsuser
+.vs/
+.vscode/
+*.binlog
+TestResults/
+
+# NuGet
+*.nupkg
+packages/
+
+# Рабочие файлы агентов
+.superpowers/
+.claude/
+
+# Локальные секреты и данные
+*.env
+.env*
+appsettings.local.json
