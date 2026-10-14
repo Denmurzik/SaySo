@@ -163,7 +163,7 @@ Measured on Windows 11 (x64), NativeAOT Release build:
 | Settings window (open, 6 s after launch) | 93.4 MB | 147.5 MB |
 | Settings window (closed) | process exits | process exits |
 
-Publish size: 66.6 MB (`SaySo.exe` is 9.6 MB).
+Publish size: 68.9 MB (`SaySo.exe` is 11.9 MB, of which about 2 MB are the built-in sounds).
 
 The daemon trims its working set after start and after each session, so its working set stays below 1 MB and *Private bytes* is the more telling column; the settings window is not trimmed. The dictation row was measured without a completed recognition: a real dictation adds network buffers (WebSocket/TLS/HTTP), so expect somewhat more.
 
