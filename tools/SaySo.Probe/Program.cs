@@ -5,6 +5,7 @@ using SaySo.Core.Audio;
 using SaySo.Core.Engines;
 using SaySo.Core.Engines.Gemini;
 using SaySo.Core.Engines.Groq;
+using SaySo.Core.Overlay;
 using SaySo.Core.Settings;
 using SaySo.Probe;
 
@@ -26,8 +27,14 @@ try
         case "errors":
             await ErrorScenarios(opts);
             return 0;
+        case "render-demo":
+            RenderDemo(opts.Get("out") ?? "docs/assets/overlay-demo.png");
+            return 0;
+        case "render-states":
+            RenderStates(opts.Get("out-dir") ?? "docs/assets");
+            return 0;
         default:
-            Console.WriteLine("Команды: gemini --wav F [--realtime] [--mode smart|verbatim] [--lang ru-RU] [--vocab \"a,b\"] [--model M] [--query-key] | session --wav F [--realtime] | groq --wav F [--no-cleanup] | errors");
+            Console.WriteLine("Команды: render-demo [--out F] | render-states [--out-dir D] | gemini --wav F [--realtime] [--mode smart|verbatim] [--lang ru-RU] [--vocab \"a,b\"] [--model M] [--query-key] | session --wav F [--realtime] | groq --wav F [--no-cleanup] | errors");
             return 2;
     }
 }
@@ -193,6 +200,74 @@ static async Task ErrorScenarios(Args o)
         {
             Console.WriteLine($"   {e.Kind}: {e.Message}");
         }
+    }
+}
+
+static void RenderDemo(string path)
+{
+    const float scale = 2f;
+    var levels = new float[OverlayRenderer.BarCount];
+    var (w, h) = OverlayRenderer.Measure(new OverlayFrame(OverlayMode.Recording, levels, 0), scale);
+    var frames = new List<uint[]>();
+    uint[] Draw(OverlayFrame f)
+    {
+        var px = new uint[w * h];
+        OverlayRenderer.Render(px, w, h, f, scale);
+        return px;
+    }
+
+    for (var i = 0; i < 54; i++) // ~1,8 с записи: «речь» с паузами
+    {
+        var speech = i < 4 ? 0.08f : Math.Clamp(0.55f + 0.42f * MathF.Sin(i * 0.7f) * MathF.Sin(i * 0.23f + 1f), 0f, 1f);
+        Array.Copy(levels, 1, levels, 0, levels.Length - 1);
+        levels[^1] = speech;
+        frames.Add(Draw(new OverlayFrame(OverlayMode.Recording, levels.ToArray(), i * 33L)));
+    }
+
+    for (var i = 0; i < 30; i++) // ~1 с обработки
+    {
+        frames.Add(Draw(new OverlayFrame(OverlayMode.Processing, [], i * 33L)));
+    }
+
+    Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
+    ApngWriter.Write(path, w, h, frames, 33);
+    Console.WriteLine($"OK {path} ({w}×{h}, кадров: {frames.Count})");
+}
+
+/// <summary>Неподвижные состояния оверлея (запись, обработка, ошибка, сообщение) — для README; тот же рендерер и те же тексты, что у демона.</summary>
+static void RenderStates(string dir)
+{
+    const float scale = 2f;
+    Directory.CreateDirectory(Path.GetFullPath(dir));
+
+    OverlayFrame Message(string text, OverlayTone tone)
+    {
+        var mask = GdiTextMask.RenderText(text, (int)MathF.Round(13 * scale), (int)MathF.Round(400 * scale)); // как в OverlayWindow.ShowMessage
+        if (mask.Width == 0 || mask.Height == 0)
+        {
+            // GdiTextMask при сбое GDI молча возвращает пустую маску — на картинке была бы пилюля без текста.
+            throw new InvalidOperationException($"GDI не отрисовал текст «{text}» (пустая маска).");
+        }
+
+        return new OverlayFrame(OverlayMode.Message, [], 0, tone, mask);
+    }
+
+    var frames = new (string File, OverlayFrame Frame)[]
+    {
+        ("overlay-recording.png", new OverlayFrame(OverlayMode.Recording, [0.18f, 0.42f, 0.78f, 1f, 0.66f, 0.34f, 0.2f], 0)),
+        ("overlay-processing.png", new OverlayFrame(OverlayMode.Processing, [], 400)),
+        ("overlay-error.png", Message(OverlayMessages.NoFallback(EngineErrorKind.QuotaExceeded).Short, OverlayTone.Error)),
+        ("overlay-info.png", Message(OverlayMessages.FallbackUsed(EngineErrorKind.QuotaExceeded), OverlayTone.Info)),
+    };
+
+    foreach (var (file, frame) in frames)
+    {
+        var (w, h) = OverlayRenderer.Measure(frame, scale);
+        var px = new uint[w * h];
+        OverlayRenderer.Render(px, w, h, frame, scale);
+        var path = Path.Combine(dir, file);
+        ApngWriter.WriteStill(path, w, h, px);
+        Console.WriteLine($"OK {path} ({w}×{h})");
     }
 }
 
