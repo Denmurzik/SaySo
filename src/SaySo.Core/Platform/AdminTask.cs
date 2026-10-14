@@ -75,6 +75,20 @@ public static class AdminTask
 
     public static int Run() => Schtasks("/Run", "/TN", TaskName);
 
+    // Kill(entireProcessTree) бросает AggregateException, если часть дерева уже завершилась или недоступна; наружу это не выпускаем
+    // (Exists() вызывается при старте демона вне try).
+    private static void KillQuietly(Process process)
+    {
+        try
+        {
+            process.Kill(entireProcessTree: true);
+        }
+        catch (Exception e) when (e is Win32Exception or InvalidOperationException or NotSupportedException or AggregateException)
+        {
+            // процесс уже завершился или не поддаётся завершению — результат -1 всё равно возвращается
+        }
+    }
+
     /// <returns>Код завершения schtasks или -1, если запустить его не удалось / он завис.</returns>
     private static int Schtasks(params string[] args)
     {
@@ -103,7 +117,7 @@ public static class AdminTask
             _ = process.StandardError.ReadToEndAsync();
             if (!process.WaitForExit(15_000))
             {
-                process.Kill(entireProcessTree: true);
+                KillQuietly(process);
                 return -1;
             }
 

@@ -60,4 +60,19 @@ public class WasapiIntegrationTests
         capture.Stop();
         capture.Dispose();
     }
+
+    [Fact]
+    public async Task Capture_DataCallbackThrows_IsReportedAsMicrophoneException_ProcessSurvives()
+    {
+        Assert.SkipWhen(WasapiDevices.ListCaptureDevices().Count == 0, "Нет микрофона.");
+        var reported = new TaskCompletionSource<MicrophoneException>(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var capture = new WasapiCapture(null, _ => throw new InvalidOperationException("сбой обработчика"), e => reported.TrySetResult(e));
+        await capture.StartAsync().WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+
+        var error = await reported.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+
+        Assert.Equal(MicrophoneErrorKind.Other, error.Kind);
+        Assert.Contains("InvalidOperationException", error.Message);
+        capture.Stop(); // и остановка после сбоя потока не зависает
+    }
 }

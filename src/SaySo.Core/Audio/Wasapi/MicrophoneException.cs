@@ -27,6 +27,10 @@ public sealed class MicrophoneException(MicrophoneErrorKind kind, int nativeErro
 
     private FailureText Text => OverlayMessages.Microphone(Kind, NativeError);
 
+    /// <summary>Код ошибки Win32 (GetLastError) превращается в HRESULT и разбирается как обычно.</summary>
+    public static MicrophoneException FromWin32(int error, string operation) =>
+        FromHResult(error <= 0 ? error : unchecked((int)(0x80070000u | (uint)(error & 0xFFFF))), operation);
+
     public static MicrophoneException FromHResult(int hr, string operation)
     {
         var kind = unchecked((uint)hr) switch

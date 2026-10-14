@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using SaySo.Core.Diagnostics;
 using SaySo.Core.Interop;
 using Windows.Win32;
@@ -50,6 +51,11 @@ public sealed unsafe class WasapiCapture : IDisposable
         }
 
         _stopEvent = Native.CreateEventW(null, 1, 0, null);
+        if (_stopEvent == 0)
+        {
+            throw MicrophoneException.FromWin32(Marshal.GetLastPInvokeError(), "CreateEvent(stop)");
+        }
+
         _thread = new Thread(Run) { IsBackground = true, Name = "SaySo.Capture", Priority = ThreadPriority.AboveNormal };
         _thread.Start();
         return _started.Task;
@@ -110,6 +116,11 @@ public sealed unsafe class WasapiCapture : IDisposable
             WasapiDevices.Check(client->InitializeHr(AUDCLNT_SHAREMODE.AUDCLNT_SHAREMODE_SHARED, StreamFlags, BufferDuration100ns, 0, &format), "IAudioClient.Initialize");
 
             dataEvent = Native.CreateEventW(null, 0, 0, null);
+            if (dataEvent == 0)
+            {
+                throw MicrophoneException.FromWin32(Marshal.GetLastPInvokeError(), "CreateEvent(data)");
+            }
+
             WasapiDevices.Check(client->SetEventHandleHr(new HANDLE(dataEvent)), "IAudioClient.SetEventHandle");
             var iidCapture = IAudioCaptureClient.IID_Guid;
             WasapiDevices.Check(client->GetServiceHr(&iidCapture, (void**)&capture), "IAudioClient.GetService");
@@ -133,14 +144,14 @@ public sealed unsafe class WasapiCapture : IDisposable
         }
         catch (MicrophoneException e)
         {
-            if (!started)
-            {
-                _started.TrySetException(e);
-            }
-            else if (!_stopRequested)
-            {
-                _onError?.Invoke(e);
-            }
+            Report(e, started);
+        }
+        catch (Exception e)
+        {
+            // Необработанное исключение потока захвата уронило бы весь процесс: оборачиваем и сообщаем обычным путём
+            // (в журнал — только тип, текст исключения может содержать лишнее).
+            Log.Info($"Поток захвата: {e.GetType().Name}");
+            Report(new MicrophoneException(MicrophoneErrorKind.Other, e.HResult, "Поток захвата: " + e.GetType().Name), started);
         }
         finally
         {
@@ -175,6 +186,25 @@ public sealed unsafe class WasapiCapture : IDisposable
             }
 
             _started.TrySetException(new MicrophoneException(MicrophoneErrorKind.Other, 0, "Захват остановлен до запуска."));
+        }
+    }
+
+    private void Report(MicrophoneException e, bool started)
+    {
+        if (!started)
+        {
+            _started.TrySetException(e);
+        }
+        else if (!_stopRequested)
+        {
+            try
+            {
+                _onError?.Invoke(e);
+            }
+            catch (Exception callbackError)
+            {
+                Log.Error("Обработчик ошибки захвата", callbackError); // сбой обработчика тоже не должен ронять поток
+            }
         }
     }
 

@@ -95,7 +95,7 @@ internal sealed unsafe class LowLevelKeyboardHook : IDisposable
                         }
                         catch (Exception e)
                         {
-                            PlatformLog.Error("Действие потока хука", e);
+                            LogOffHookThread("Действие потока хука", e); // файловый ввод-вывод на потоке хука задерживает его колбэки
                         }
                     }
 
@@ -110,6 +110,19 @@ internal sealed unsafe class LowLevelKeyboardHook : IDisposable
         {
             Native.UnhookWindowsHookEx(hook);
             Interlocked.CompareExchange(ref s_current, null, this);
+        }
+    }
+
+    // Журнал пишется с пула потоков: ни колбэк хука, ни цикл действий не должны ждать файл (Windows снимает медленный хук).
+    private static void LogOffHookThread(string context, Exception error)
+    {
+        try
+        {
+            ThreadPool.UnsafeQueueUserWorkItem(static state => PlatformLog.Error(state.Context, state.Error), (Context: context, Error: error), preferLocal: false);
+        }
+        catch
+        {
+            // не удалось — ничего страшного, главное не пробросить исключение в нативный код
         }
     }
 
@@ -136,14 +149,7 @@ internal sealed unsafe class LowLevelKeyboardHook : IDisposable
             catch (Exception ex)
             {
                 // Файловый ввод-вывод в колбэке хука нельзя: Windows снимает медленный хук. Пишем в журнал с пула потоков.
-                try
-                {
-                    ThreadPool.UnsafeQueueUserWorkItem(static e => PlatformLog.Error("Колбэк хука", e), ex, preferLocal: false);
-                }
-                catch
-                {
-                    // не удалось — ничего страшного, главное не пробросить исключение в нативный код
-                }
+                LogOffHookThread("Колбэк хука", ex);
             }
         }
 

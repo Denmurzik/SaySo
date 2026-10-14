@@ -19,11 +19,42 @@ public static class KeyboardInjector
         Key(VkControl, up: true),
     ];
 
+    /// <summary>
+    /// Отпускания клавиш, нажатых, но не отпущенных, если система приняла только первые <paramref name="accepted"/> из 4 событий
+    /// <see cref="BuildCtrlV"/>: без них Ctrl остался бы «зажатым» для всей системы.
+    /// </summary>
+    internal static Native.INPUT[] BuildReleasesAfterPartial(int accepted)
+    {
+        var releases = new List<Native.INPUT>(2);
+        if (accepted == 2)
+        {
+            releases.Add(Key(VkV, up: true)); // V нажата (событие 1), но не отпущена (событие 2)
+        }
+
+        if (accepted is >= 1 and <= 3)
+        {
+            releases.Add(Key(VkControl, up: true)); // Ctrl нажат (событие 0), но не отпущен (событие 3)
+        }
+
+        return [.. releases];
+    }
+
     /// <returns>true, только если система приняла все 4 события (иначе — защищённый рабочий стол, BlockInput и т.п.).</returns>
     public static bool SendCtrlV()
     {
         var inputs = BuildCtrlV();
-        return Send(inputs) == inputs.Length;
+        var accepted = Send(inputs);
+        if (accepted == inputs.Length)
+        {
+            return true;
+        }
+
+        if (BuildReleasesAfterPartial(accepted) is { Length: > 0 } releases)
+        {
+            Send(releases);
+        }
+
+        return false;
     }
 
     /// <summary>Неназначенная клавиша 0xE8: не даёт открыться «Пуску»/меню, если в комбинации Win или Alt.</summary>

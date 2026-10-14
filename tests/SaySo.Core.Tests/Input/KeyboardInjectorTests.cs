@@ -21,4 +21,22 @@ public class KeyboardInjectorTests
             Assert.Equal(KeyboardInjector.InjectionMarker, i.u.ki.dwExtraInfo);
         });
     }
+
+    [Theory]
+    [InlineData(0, new ushort[0])]                 // система ничего не приняла — отпускать нечего
+    [InlineData(1, new ushort[] { 0x11 })]         // принят только Ctrl↓
+    [InlineData(2, new ushort[] { 0x56, 0x11 })]   // Ctrl↓ V↓ — отпустить V, затем Ctrl
+    [InlineData(3, new ushort[] { 0x11 })]         // Ctrl↓ V↓ V↑ — остался Ctrl
+    [InlineData(4, new ushort[0])]                 // принято всё
+    public void BuildReleasesAfterPartial_ReleasesOnlyKeysLeftDown(int accepted, ushort[] expectedKeys)
+    {
+        var releases = KeyboardInjector.BuildReleasesAfterPartial(accepted);
+
+        Assert.Equal(expectedKeys, releases.Select(i => i.u.ki.wVk).ToArray());
+        Assert.All(releases, i =>
+        {
+            Assert.NotEqual(0u, i.u.ki.dwFlags & Native.KEYEVENTF_KEYUP);
+            Assert.Equal(KeyboardInjector.InjectionMarker, i.u.ki.dwExtraInfo); // собственный хук SaySo их игнорирует
+        });
+    }
 }
