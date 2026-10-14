@@ -15,6 +15,9 @@ public static class WhisperOutputFilter
         "thanks for watching",
     ];
 
+    /// <summary>Фразы-галлюцинации, которые Whisper выдаёт на тишине и которые считаются мусором только как весь текст целиком.</summary>
+    private static readonly string[] HallucinationExact = ["you"];
+
     /// <summary>Максимальная длина остатка после фразы-галлюцинации (подпись вроде «DimaTorzok»).</summary>
     private const int MaxCreditsLength = 40;
 
@@ -25,6 +28,14 @@ public static class WhisperOutputFilter
         if (core.Length == 0)
         {
             return "";
+        }
+
+        foreach (var exact in HallucinationExact)
+        {
+            if (core.Equals(exact, StringComparison.OrdinalIgnoreCase))
+            {
+                return "";
+            }
         }
 
         foreach (var prefix in HallucinationPrefixes)
