@@ -74,6 +74,21 @@
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
                     <StackPanel VerticalAlignment="Center">
+                        <TextBlock Text="Проверять обновления автоматически" Style="{StaticResource CardTitle}" />
+                        <TextBlock Style="{StaticResource CardDescription}"
+                                   Text="Раз в сутки SaySo спрашивает у GitHub, нет ли новой версии. Ключи и тексты диктовок не отправляются. Ручная проверка — на странице «О программе»." />
+                    </StackPanel>
+                    <ToggleSwitch x:Name="UpdatesSwitch" Grid.Column="1" OnContent="Вкл" OffContent="Выкл" Toggled="OnUpdatesToggled" />
+                </Grid>
+            </Border>
+
+            <Border Style="{StaticResource SettingsCard}">
+                <Grid ColumnSpacing="16">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel VerticalAlignment="Center">
                         <TextBlock Text="Запускать от имени администратора" Style="{StaticResource CardTitle}" />
                         <TextBlock Style="{StaticResource CardDescription}"
                                    Text="Нужно, чтобы вставлять текст в окна, запущенные от администратора (терминалы, IDE). Автозапуск тогда идёт через Планировщик заданий; потребуется подтверждение UAC." />

@@ -27,6 +27,9 @@ public sealed class AppSettings
 
     /// <summary>Запуск демона с правами администратора (для вставки в админ-окна).</summary>
     public bool RunAsAdmin { get; set; }
+
+    /// <summary>Раз в сутки (по событиям, не по таймеру) спрашивать GitHub о новой версии.</summary>
+    public bool CheckForUpdates { get; set; } = true;
 }
 
 public sealed class HotkeySettings

@@ -1,6 +1,7 @@
 using SaySo.Core.Audio.Wasapi;
 using SaySo.Core.Engines;
 using SaySo.Core.Input;
+using SaySo.Core.Updates;
 
 namespace SaySo.Core.Overlay;
 
@@ -32,6 +33,16 @@ public static class OverlayMessages
 
     /// <summary>«Вставить последнее»: окно, куда вставляли, не получило фокус (или закрыто).</summary>
     public const string FocusNotRestored = "Не удалось вернуться в окно — текст в истории";
+
+    // Обновление: плашка показывается, пока идёт скачивание и после отмены/сбоя запуска.
+    public const string UpdateDownloading = "Скачиваю обновление…";
+    public const string UpdateInstalling = "Устанавливаю обновление…";
+    public const string UpdateCancelled = "Обновление отменено";
+    public const string UpdateInstallFailed = "Не удалось установить обновление";
+    public const string UpdateNotInstalled = "Обновление не установлено";
+    public const string UpdateLaunchFailed = "Не удалось запустить обновление";
+    public const string UpdateUpToDate = "Установлена последняя версия";
+    public const string UpdateCheckFailed = "Не удалось проверить обновления";
 
     private const string NoFallbackSuffix = "; резерв не настроен";
     private const string BothUnavailable = "Gemini и Groq недоступны — подробности в трее";
@@ -87,11 +98,37 @@ public static class OverlayMessages
             : new FailureText(BothUnavailable,
                 ErrorMessages.Describe(primaryError, "Gemini") + "; " + ErrorMessages.Describe(fallbackError, "Groq"));
 
+    /// <summary>Скачивание или проверка файла обновления не удались; в журнале — подробности.</summary>
+    public static string ForDownloadFailure(DownloadFailure failure) => failure switch
+    {
+        DownloadFailure.NotInstallable => "В релизе нет установщика",
+        DownloadFailure.ChecksumFileInvalid or DownloadFailure.SizeMismatch or DownloadFailure.HashMismatch =>
+            "Файл обновления не прошёл проверку",
+        _ => "Не удалось скачать обновление",
+    };
+
     /// <summary>Все возможные строки плашки (по одной на вариант) — для проверки ширины.</summary>
-    public static IEnumerable<string> All() => AllTexts().Select(t => t.Short);
+    public static IEnumerable<string> All() => AllTexts().Select(t => t.Short).Concat(UpdateTexts());
 
     /// <summary>Полные тексты для подсказки трея — для проверки, что они помещаются в её лимит.</summary>
     public static IEnumerable<string> AllDetails() => AllTexts().Select(t => t.Detail);
+
+    // Сообщения об обновлении — не ошибки диктовки и в подсказку значка не попадают, поэтому не входят в AllDetails().
+    private static IEnumerable<string> UpdateTexts()
+    {
+        yield return UpdateDownloading;
+        yield return UpdateInstalling;
+        yield return UpdateCancelled;
+        yield return UpdateInstallFailed;
+        yield return UpdateNotInstalled;
+        yield return UpdateLaunchFailed;
+        yield return UpdateUpToDate;
+        yield return UpdateCheckFailed;
+        foreach (var failure in Enum.GetValues<DownloadFailure>())
+        {
+            yield return ForDownloadFailure(failure);
+        }
+    }
 
     private static IEnumerable<FailureText> AllTexts()
     {

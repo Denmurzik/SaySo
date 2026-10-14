@@ -27,6 +27,7 @@ public sealed partial class GeneralPage : UserControl
         TapValue.Text = $"{s.Hotkey.TapThresholdMs} мс";
         SoundsSwitch.IsOn = s.SoundsEnabled;
         AutostartSwitch.IsOn = s.AutostartEnabled;
+        UpdatesSwitch.IsOn = s.CheckForUpdates;
         AdminSwitch.IsOn = s.RunAsAdmin;
         UpdateAutostartAvailability();
         _tapSaveTimer = DispatcherQueue.CreateTimer();
@@ -131,6 +132,22 @@ public sealed partial class GeneralPage : UserControl
         }
 
         _model.Settings.AutostartEnabled = AutostartSwitch.IsOn;
+        SaveOrWarn();
+    }
+
+    private void OnUpdatesToggled(object sender, RoutedEventArgs e)
+    {
+        if (_loading)
+        {
+            return;
+        }
+
+        if (UpdatesSwitch.IsOn == _model.Settings.CheckForUpdates)
+        {
+            return;
+        }
+
+        _model.Settings.CheckForUpdates = UpdatesSwitch.IsOn;
         SaveOrWarn();
     }
 

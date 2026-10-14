@@ -28,4 +28,12 @@ public class LaunchOptionsTests
         Assert.Equal(LaunchMode.InstallAdminTask, LaunchOptions.Parse(["--install-admin-task"]).Mode);
         Assert.Equal(LaunchMode.RemoveAdminTask, LaunchOptions.Parse(["--remove-admin-task"]).Mode);
     }
+
+    [Fact]
+    public void CheckUpdates_WithAndWithoutReportFile()
+    {
+        Assert.Equal(new LaunchOptions(LaunchMode.CheckUpdates), LaunchOptions.Parse(["--check-updates"]));
+        Assert.Equal(new LaunchOptions(LaunchMode.CheckUpdates, OutPath: "r.txt"), LaunchOptions.Parse(["--check-updates", "--out", "r.txt"]));
+        Assert.Equal(new LaunchOptions(LaunchMode.CheckUpdates), LaunchOptions.Parse(["--check-updates", "--out"]));
+    }
 }
