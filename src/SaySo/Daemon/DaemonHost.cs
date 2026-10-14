@@ -2,6 +2,8 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.Security;
 using SaySo.Core.Diagnostics;
+using SaySo.Core.Dictation;
+using SaySo.Core.Engines.Gemini;
 using SaySo.Core.Hotkeys;
 using SaySo.Core.Input;
 using SaySo.Core.Interop;
@@ -31,6 +33,18 @@ internal sealed class DaemonHost : IDisposable
     private AppSettings _settings;
     private bool _paused;
     private bool _ipcSuspended;
+    private readonly OverlayWindow _overlay;
+    private readonly HttpClient _http = SettingsDictationEngines.CreateHttpClient();
+    private readonly DictationCoordinator _dictation;
+    private IDisposable? _trimTimer;
+
+    // Что реально применено к слушателю хука. SetSuspended и Configure сбрасывают автомат (посреди удержания клавиши
+    // это ломает сессию), поэтому вызываются только при изменении значения и только когда диктовка не идёт.
+    private bool _appliedSuspended;
+    private int[] _appliedKeys = [];
+    private int _appliedThresholdMs;
+    private bool _cancelInFlight;
+    private string? _pendingReinstall;
 
     private DaemonHost(AppPaths paths, SettingsStore settingsStore, AppSettings settings)
     {
@@ -44,6 +58,23 @@ internal sealed class DaemonHost : IDisposable
         _inserter = new TextInserter(_window.Handle, TimeProvider.System);
         _icons = TrayIcons.Create();
         _tray = new TrayIcon(_window.Handle, DaemonWindow.TrayMessage);
+
+        // Контекст синхронизации главного потока уже установлен выше: продолжения HandleAsync возвращаются на этот поток.
+        var engines = new SettingsDictationEngines(() => _settings, _secretStore.Load, _http, () => new ClientWebSocketTransport());
+        _overlay = new OverlayWindow(() => _dictation?.CurrentLevel ?? 0f);
+        _dictation = new DictationCoordinator(
+            new DictationPipeline(engines),
+            (onData, onError) => new WasapiAudioSource(_settings.MicrophoneDeviceId, onData, onError),
+            _overlay,
+            new InserterOutput(_inserter),
+            new DaemonFeedback(OnDictationTray),
+            new WindowScheduler(_window),
+            _history,
+            () => _settings,
+            () => _hotkey?.Reset(),
+            // Именно асинхронный Post: onError приходит с потока WASAPI, а StopCapture ждёт его завершения — Send зашёл бы в тупик.
+            action => _window.Sync.Post(_ => action(), null),
+            TimeProvider.System);
         CreateHotkey();
 
         _window.HotkeyPressed += OnHotkey;
@@ -54,11 +85,13 @@ internal sealed class DaemonHost : IDisposable
         _window.SessionLockChanged += OnSessionLockChanged;
         _window.PowerResumed += () => TryReinstallHotkey("выход из сна");
         _window.ThemeChanged += RefreshIcons;
+        _dictation.SessionEnded += OnSessionEnded;
         UpdateTray(TrayState.Idle);
+        ScheduleTrim(TimeSpan.FromSeconds(3));
     }
 
-    /// <summary>Окно, в которое была последняя вставка (для «Вставить последнее»). Заполняется в задаче 16.</summary>
-    internal nint LastTarget { get; set; }
+    /// <summary>Окно, в которое была последняя вставка (для «Вставить последнее»).</summary>
+    internal nint LastTarget => _inserter.Last?.Window ?? 0;
 
     private static string ExePath => Environment.ProcessPath ?? Path.Combine(AppContext.BaseDirectory, "SaySo.exe");
 
@@ -134,6 +167,8 @@ internal sealed class DaemonHost : IDisposable
     {
         _hotkey?.Dispose();
         _hotkey = null;
+        _overlay.Dispose();
+        _http.Dispose();
         _tray.Dispose();
         _icons.Dispose();
         _window.Dispose();
@@ -151,8 +186,20 @@ internal sealed class DaemonHost : IDisposable
         catch (UnauthorizedAccessException)
         {
             // Мьютекс создан элевированным демоном (его DACL не пускает обычный процесс) — значит, демон уже работает.
-            SendOpenSettings();
-            return null;
+            if (SendOpenSettings())
+            {
+                return null;
+            }
+
+            // Демон не отвечает: возможно, он как раз завершился и имя освободилось — одна повторная попытка.
+            try
+            {
+                mutex = new Mutex(initiallyOwned: true, MutexName, out createdNew);
+            }
+            catch (UnauthorizedAccessException)
+            {
+                return null;
+            }
         }
 
         if (createdNew)
@@ -217,30 +264,28 @@ internal sealed class DaemonHost : IDisposable
         return true;
     }
 
-    // Заглушка до задачи 16: только индикация.
     private void OnHotkey(HotkeyAction action)
     {
-        Log.Info($"Горячая клавиша: {action}");
-        switch (action)
+        // Сообщение могло быть отправлено хуком до паузы или до начала записи комбинации в настройках.
+        if (action == HotkeyAction.StartRecording && Suspended)
         {
-            case HotkeyAction.StartRecording:
-                UpdateTray(TrayState.Recording);
-                if (_settings.SoundsEnabled)
-                {
-                    SoundPlayer.Play(SoundKind.Start);
-                }
+            return;
+        }
 
-                break;
-            case HotkeyAction.StopRecording:
-            case HotkeyAction.Cancel:
-                UpdateTray(TrayState.Idle);
-                _hotkey?.Reset();
-                if (_settings.SoundsEnabled && action == HotkeyAction.StopRecording)
-                {
-                    SoundPlayer.Play(SoundKind.Stop);
-                }
+        Log.Info($"Горячая клавиша: {action}");
+        _ = ObserveAsync(_dictation.HandleAsync(action), "Диктовка");
+    }
 
-                break;
+    // Исключение из async-метода без ожидающего иначе пропало бы незамеченным.
+    private static async Task ObserveAsync(Task task, string context)
+    {
+        try
+        {
+            await task;
+        }
+        catch (Exception e)
+        {
+            Log.Error(context, e);
         }
     }
 
@@ -302,8 +347,9 @@ internal sealed class DaemonHost : IDisposable
             case CmdPause:
                 _paused = !_paused;
                 _ipcSuspended = false; // ручная пауза/возобновление отменяет «зависшую» приостановку от окна настроек
-                ApplySuspension();
-                UpdateTray(_paused ? TrayState.Paused : TrayState.Idle);
+                ReconcileHotkey();
+                // Идущую запись отменит ReconcileHotkey; значок после неё станет «приостановлено» через OnDictationTray.
+                UpdateTray(_dictation.State == DictationState.Recording ? _trayState : RestingTrayState);
                 break;
             case CmdExit:
                 RequestQuit();
@@ -335,18 +381,25 @@ internal sealed class DaemonHost : IDisposable
             case IpcProtocol.ReloadSettings:
                 _settings = _settingsStore.Load();
                 _ipcSuspended = false; // окно настроек закончило запись комбинации (или умерло, не прислав Resume)
-                ReconfigureHotkey();
-                ApplySuspension();
+                if (_hotkey is null)
+                {
+                    CreateHotkey(); // прежняя попытка не удалась — пробуем снова, уже с новыми клавишами
+                }
+                else
+                {
+                    ReconcileHotkey();
+                }
+
                 SyncAutostart();
-                UpdateTray(_paused ? TrayState.Paused : TrayState.Idle);
+                UpdateTray(_dictation.State == DictationState.Idle ? RestingTrayState : _trayState);
                 break;
             case IpcProtocol.SuspendHotkey:
                 _ipcSuspended = true;
-                ApplySuspension();
+                ReconcileHotkey();
                 break;
             case IpcProtocol.ResumeHotkey:
                 _ipcSuspended = false;
-                ApplySuspension();
+                ReconcileHotkey();
                 break;
             case IpcProtocol.OpenSettings:
                 OpenSettings();
@@ -371,6 +424,8 @@ internal sealed class DaemonHost : IDisposable
     {
         if (locked)
         {
+            Log.Info("Сеанс заблокирован");
+            _ = ObserveAsync(_dictation.HandleAsync(HotkeyAction.Cancel), "Отмена диктовки при блокировке");
             _hotkey?.Reset();
             return;
         }
@@ -386,72 +441,139 @@ internal sealed class DaemonHost : IDisposable
         try
         {
             _hotkey = CreateListener();
-            ApplySuspension();
         }
         catch (Exception e) when (e is InvalidOperationException or Win32Exception or ArgumentException)
         {
-            // Без хука демон остаётся жить (значок, меню, IPC); следующее событие переустановки попробует снова.
+            // Без хука демон остаётся жить (значок, меню, IPC); следующее событие переустановки или ReloadSettings попробует снова.
             Log.Error("Установка хука клавиатуры", e);
             _hotkey = null;
+            return;
         }
+
+        // Новый слушатель стартует без паузы и с текущими клавишами из настроек.
+        _appliedSuspended = false;
+        _appliedKeys = [.. _settings.Hotkey.Keys];
+        _appliedThresholdMs = _settings.Hotkey.TapThresholdMs;
+        ReconcileHotkey();
     }
 
     // Windows молча снимает WH_KEYBOARD_LL после тайм-аута колбэка. Таймеров в простое нет (§1/§11):
     // хук переустанавливается только по событиям (разблокировка, выход из сна, щелчок по значку), и только в простое.
     private void TryReinstallHotkey(string reason)
     {
-        if (_trayState is not (TrayState.Idle or TrayState.Paused))
+        if (_dictation.State != DictationState.Idle)
         {
+            // Не рвём идущую диктовку: переустановка выполнится по её окончании (OnSessionEnded).
+            _pendingReinstall = reason;
             return;
         }
 
+        _pendingReinstall = null;
         if (_settings.Hotkey.Keys.Any(KeyboardInjector.IsKeyDown))
         {
             return;
         }
 
-        var old = _hotkey;
-        old?.Dispose();
-        try
+        _hotkey?.Dispose();
+        _hotkey = null;
+        CreateHotkey(); // при неудаче _hotkey остаётся null — ReloadSettings или следующее событие повторят попытку
+        if (_hotkey is not null)
         {
-            _hotkey = CreateListener();
-            ApplySuspension();
             Log.Info($"Хук клавиатуры переустановлен ({reason})");
-        }
-        catch (Exception e) when (e is InvalidOperationException or Win32Exception or ArgumentException)
-        {
-            // Например, поток старого хука не завершился и он ещё занимает единственный слот: остаёмся на прежнем слушателе.
-            Log.Error($"Переустановка хука клавиатуры ({reason})", e);
-            _hotkey = old;
         }
     }
 
-    private void ReconfigureHotkey()
+    private void OnSessionEnded()
     {
-        if (_hotkey is null)
+        ScheduleTrim(TimeSpan.FromSeconds(2));
+        if (_pendingReinstall is { } reason)
         {
-            CreateHotkey();
-            return;
+            TryReinstallHotkey(reason);
         }
 
-        try
-        {
-            _hotkey.Configure(_settings.Hotkey.Keys, _settings.Hotkey.TapThresholdMs);
-        }
-        catch (ArgumentException e)
-        {
-            Log.Error("Настройка горячей клавиши", e);
-        }
+        ReconcileHotkey();
     }
 
     // Хук пропускает все клавиши, пока демон приостановлен из трея или окно настроек записывает новую комбинацию.
-    private void ApplySuspension() => _hotkey?.SetSuspended(_paused || _ipcSuspended);
+    private bool Suspended => _paused || _ipcSuspended;
+
+    /// <summary>
+    /// Приводит слушатель хука к нужному состоянию (пауза, клавиши из настроек), вызывая SetSuspended/Configure только
+    /// при изменении. То, что сбрасывает автомат, не применяется посреди диктовки: запись отменяется, а при
+    /// «Finishing» применение откладывается до <see cref="OnSessionEnded"/>. Снять паузу можно в любой момент.
+    /// </summary>
+    private void ReconcileHotkey()
+    {
+        if (_hotkey is not { } hotkey)
+        {
+            return;
+        }
+
+        var suspend = Suspended;
+        var keys = _settings.Hotkey.Keys;
+        var threshold = _settings.Hotkey.TapThresholdMs;
+        var keysChanged = !keys.SequenceEqual(_appliedKeys) || threshold != _appliedThresholdMs;
+        if ((keysChanged || (suspend && !_appliedSuspended)) && _dictation.State != DictationState.Idle)
+        {
+            if (_dictation.State == DictationState.Recording && !_cancelInFlight)
+            {
+                _ = CancelThenReconcileAsync();
+            }
+
+            return;
+        }
+
+        if (keysChanged)
+        {
+            try
+            {
+                hotkey.Configure(keys, threshold);
+            }
+            catch (ArgumentException e)
+            {
+                Log.Error("Настройка горячей клавиши", e);
+            }
+
+            // Некорректную комбинацию повторно не применяем: иначе каждый вызов отменял бы диктовку.
+            _appliedKeys = [.. keys];
+            _appliedThresholdMs = threshold;
+        }
+
+        if (suspend != _appliedSuspended)
+        {
+            hotkey.SetSuspended(suspend);
+            _appliedSuspended = suspend;
+        }
+    }
+
+    private async Task CancelThenReconcileAsync()
+    {
+        _cancelInFlight = true;
+        try
+        {
+            await _dictation.HandleAsync(HotkeyAction.Cancel);
+        }
+        catch (Exception e)
+        {
+            Log.Error("Отмена диктовки перед перенастройкой хука", e);
+        }
+        finally
+        {
+            _cancelInFlight = false;
+        }
+
+        // Путь сбоя микрофона не вызывает SessionEnded, поэтому применяем и здесь (повторный вызов безвреден).
+        if (_dictation.State != DictationState.Recording)
+        {
+            ReconcileHotkey();
+        }
+    }
 
     private void OpenSettings()
     {
         // Окно настроек запускается заново — «зависшая» приостановка от прежнего окна больше не нужна.
         _ipcSuspended = false;
-        ApplySuspension();
+        ReconcileHotkey();
         try
         {
             Process.Start(new ProcessStartInfo(ExePath, "--settings") { UseShellExecute = false })?.Dispose();
@@ -488,6 +610,24 @@ internal sealed class DaemonHost : IDisposable
         old.Dispose();
     }
 
+    private TrayState RestingTrayState => _paused ? TrayState.Paused : TrayState.Idle;
+
+    // Координатор сообщает «Idle» после каждой сессии; при ручной паузе значок остаётся «приостановлено».
+    private void OnDictationTray(TrayState state) =>
+        UpdateTray(state == TrayState.Idle && _paused ? TrayState.Paused : state);
+
+    private void ScheduleTrim(TimeSpan delay)
+    {
+        _trimTimer?.Dispose();
+        _trimTimer = _window.SetTimer(delay, () =>
+        {
+            if (_dictation.State == DictationState.Idle)
+            {
+                MemoryTrimmer.Trim();
+            }
+        });
+    }
+
     private void UpdateTray(TrayState state)
     {
         _trayState = state;
@@ -495,6 +635,7 @@ internal sealed class DaemonHost : IDisposable
         {
             TrayState.Paused => "SaySo — приостановлено",
             TrayState.Recording => "SaySo — запись…",
+            TrayState.Error => "SaySo — последняя диктовка не удалась (подробности в настройках → История)",
             _ => $"SaySo — удерживайте {HotkeyFormatter.Format(_settings.Hotkey.Keys)}",
         };
         _tray.Set(_icons.Get(state), tooltip);
