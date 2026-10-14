@@ -7,6 +7,9 @@ public enum LaunchMode
     Simulate,
     InstallAdminTask,
     RemoveAdminTask,
+
+    /// <summary>Диагностика: один запрос о последнем релизе без демона, окон и записи состояния.</summary>
+    CheckUpdates,
 }
 
 /// <summary>Режим запуска SaySo.exe по аргументам командной строки.</summary>
@@ -24,6 +27,17 @@ public sealed record LaunchOptions(LaunchMode Mode, string? WavPath = null, stri
                     return new LaunchOptions(LaunchMode.InstallAdminTask);
                 case "--remove-admin-task":
                     return new LaunchOptions(LaunchMode.RemoveAdminTask);
+                case "--check-updates":
+                    string? report = null;
+                    for (var j = i + 1; j + 1 < args.Count; j++)
+                    {
+                        if (args[j] == "--out")
+                        {
+                            report = args[j + 1];
+                        }
+                    }
+
+                    return new LaunchOptions(LaunchMode.CheckUpdates, OutPath: report);
                 case "--simulate":
                     if (i + 1 >= args.Count || args[i + 1].StartsWith("--", StringComparison.Ordinal))
                     {
