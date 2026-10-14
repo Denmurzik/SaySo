@@ -95,6 +95,9 @@ internal static unsafe partial class Native
     [return: MarshalAs(UnmanagedType.Bool)]
     public static partial bool DestroyWindow(nint hWnd);
 
+    [LibraryImport("user32.dll")]
+    public static partial nint GetShellWindow();
+
     [LibraryImport("kernel32.dll", StringMarshalling = StringMarshalling.Utf16)]
     public static partial nint GetModuleHandleW(string? moduleName);
 

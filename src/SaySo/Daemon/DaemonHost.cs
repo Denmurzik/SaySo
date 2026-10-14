@@ -55,6 +55,7 @@ internal sealed class DaemonHost : IDisposable
     private bool _quitAfterSession;
     private IDisposable? _quitTimer;
     private string? _lastErrorDetail;
+    private readonly MinIntervalGate _clickReinstallGate = new(TimeSpan.FromSeconds(1), TimeProvider.System);
 
     private DaemonHost(AppPaths paths, SettingsStore settingsStore, AppSettings settings)
     {
@@ -67,7 +68,7 @@ internal sealed class DaemonHost : IDisposable
         SynchronizationContext.SetSynchronizationContext(_window.Sync);
         _inserter = new TextInserter(_window.Handle, TimeProvider.System);
         _icons = TrayIcons.Create();
-        _tray = new TrayIcon(_window.Handle, DaemonWindow.TrayMessage);
+        _tray = new TrayIcon(_window.Handle, DaemonWindow.TrayMessage, (due, action) => _window.SetTimer(due, action));
 
         // Контекст синхронизации главного потока уже установлен выше: продолжения HandleAsync возвращаются на этот поток.
         _engines = new SettingsDictationEngines(() => _settings, _secretStore.Load, _http, () => new ClientWebSocketTransport());
@@ -320,7 +321,12 @@ internal sealed class DaemonHost : IDisposable
         {
             case Native.WM_LBUTTONUP:
                 // Щелчок по значку — путь восстановления для пользователя, если система сняла хук.
-                TryReinstallHotkey("щелчок по значку", cancelRecording: true);
+                // Двойной щелчок приносит два WM_LBUTTONUP: второй раз в течение секунды хук не пересоздаём.
+                if (_clickReinstallGate.TryPass())
+                {
+                    TryReinstallHotkey("щелчок по значку", cancelRecording: true);
+                }
+
                 break;
             case Native.WM_LBUTTONDBLCLK:
                 OpenSettings();
@@ -363,6 +369,7 @@ internal sealed class DaemonHost : IDisposable
                 if (!ClipboardText.SetText(_window.Handle, last.Text, excludeFromHistory: false))
                 {
                     Log.Info("Скопировать последнее: буфер обмена недоступен");
+                    ShowMenuActionProblem(InsertOutcome.ClipboardUnavailable);
                 }
 
                 break;
@@ -391,10 +398,20 @@ internal sealed class DaemonHost : IDisposable
             await Task.Delay(100);
             var outcome = await _inserter.InsertAsync(text, [], expectedForeground: LastTarget);
             Log.Info($"Вставить последнее: {outcome}");
+            ShowMenuActionProblem(outcome);
         }
         catch (Exception e)
         {
             Log.Error("Вставить последнее", e);
+        }
+    }
+
+    // Пункты меню трея сообщают о неудаче теми же строками оверлея, что и диктовка; иначе щелчок «ничего не делает».
+    private void ShowMenuActionProblem(InsertOutcome outcome)
+    {
+        if (OverlayMessages.ForInsertOutcome(outcome) is { } text && _dictation.State == DictationState.Idle)
+        {
+            _overlay.ShowMessage(text, OverlayTone.Error);
         }
     }
 

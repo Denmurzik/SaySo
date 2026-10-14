@@ -59,7 +59,8 @@ public class InsertionIntegrationTests
                     return;
                 }
 
-                var inserter = new TextInserter(owner, TimeProvider.System);
+                // Окно теста живёт в этом же процессе, а вставка в «своё» окно запрещена: подменяем «свой» PID.
+                var inserter = new TextInserter(owner, TimeProvider.System) { OwnProcessId = 0 };
                 var task = Task.Run(() => inserter.InsertAsync("Привет, мир", [], expectedForeground: edit), TestContext.Current.CancellationToken);
                 while (!task.IsCompleted)
                 {
@@ -138,6 +139,50 @@ public class InsertionIntegrationTests
                 ClipboardOwner.Destroy(owner);
             }
         });
+    }
+
+    [Fact]
+    public void InsertAsync_ForegroundIsOwnProcessWindow_ReturnsNoTarget_WithoutTyping()
+    {
+        InsertOutcome? outcome = null;
+        string? text = null;
+        var skipped = false;
+        RunSta(() =>
+        {
+            var owner = ClipboardOwner.Create();
+            var edit = TestWindows.CreateEdit();
+            try
+            {
+                Native.SetForegroundWindow(edit);
+                TestWindows.Pump(300);
+                if (Native.GetForegroundWindow() != edit)
+                {
+                    skipped = true;
+                    return;
+                }
+
+                // Окно теста — окно нашего процесса: как меню трея демона, пока сессия завершается.
+                var inserter = new TextInserter(owner, TimeProvider.System);
+                var task = Task.Run(() => inserter.InsertAsync("не должно вставиться", [], expectedForeground: edit), TestContext.Current.CancellationToken);
+                while (!task.IsCompleted)
+                {
+                    TestWindows.Pump(20);
+                }
+
+                TestWindows.Pump(200);
+                outcome = task.Result;
+                text = TestWindows.GetText(edit);
+            }
+            finally
+            {
+                Native.DestroyWindow(edit);
+                ClipboardOwner.Destroy(owner);
+            }
+        });
+
+        Assert.SkipWhen(skipped, "Тестовое окно не получило фокус (процесс тестов в фоне).");
+        Assert.Equal(InsertOutcome.NoTarget, outcome);
+        Assert.Equal("", text);
     }
 
     [Fact]
