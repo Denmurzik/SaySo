@@ -29,7 +29,11 @@ public sealed partial class MainWindow : Window
         {
             "general" => new GeneralPage(_model),
             "recognition" => new RecognitionPage(_model),
-            _ => new TextBlock { Text = "Раздел появится в следующей задаче.", Margin = new Thickness(32) }, // задача 18
+            "dictionary" => new DictionaryPage(_model),
+            "microphone" => new MicrophonePage(_model),
+            "history" => new HistoryPage(_model),
+            "about" => new AboutPage(_model),
+            _ => null,
         };
     }
 }
