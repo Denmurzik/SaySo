@@ -1,6 +1,7 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using SaySo.Core.Dictation;
+using SaySo.Core.Diagnostics;
 using SaySo.Core.Engines;
 using SaySo.Core.Engines.Gemini;
 using SaySo.Core.Engines.Groq;
@@ -16,6 +17,8 @@ public sealed partial class RecognitionPage : UserControl
         ("Русский (ru-RU)", ["ru-RU"]),
         ("English (en-US)", ["en-US"]),
     ];
+
+    private static readonly char[] KeySeparators = [',', ';', ' ', '\t', '\r', '\n'];
 
     private readonly SettingsModel _model;
     private bool _loading = true;
@@ -62,11 +65,13 @@ public sealed partial class RecognitionPage : UserControl
     private void OnAddGeminiKey(object sender, RoutedEventArgs e) =>
         AddGeminiKeyRow("").Focus(FocusState.Programmatic);
 
-    // Строка списка ключей: поле ключа + «Удалить». Сохраняется при потере фокуса и при удалении.
-    private PasswordBox AddGeminiKeyRow(string key)
+    // Строка списка ключей: поле ключа + «Удалить». Значение уходит в модель сразу при вводе (чтобы не потерять
+    // ключ при закрытии окна), на диск — при потере фокуса и при удалении.
+    private PasswordBox AddGeminiKeyRow(string key, int insertAt = -1)
     {
         var box = new PasswordBox { Password = key, PasswordRevealMode = PasswordRevealMode.Peek, PlaceholderText = "AIza…" };
-        box.LostFocus += (_, _) => CommitGeminiKeys();
+        box.PasswordChanged += (_, _) => SyncGeminiKeys();
+        box.LostFocus += (_, _) => OnGeminiKeyLostFocus(box);
         var remove = new Button { Content = "Удалить", VerticalAlignment = VerticalAlignment.Center };
         var row = new Grid { ColumnSpacing = 8 };
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
@@ -79,11 +84,41 @@ public sealed partial class RecognitionPage : UserControl
             GeminiKeysPanel.Children.Remove(row);
             CommitGeminiKeys();
         };
-        GeminiKeysPanel.Children.Add(row);
+        if (insertAt >= 0 && insertAt <= GeminiKeysPanel.Children.Count)
+        {
+            GeminiKeysPanel.Children.Insert(insertAt, row);
+        }
+        else
+        {
+            GeminiKeysPanel.Children.Add(row);
+        }
+
         return box;
     }
 
-    private void CommitGeminiKeys()
+    // Вставленная строка «k1, k2» (через запятую, пробел или перевод строки) разбивается на отдельные строки ключей.
+    private void OnGeminiKeyLostFocus(PasswordBox box)
+    {
+        if (_loading)
+        {
+            return;
+        }
+
+        var parts = box.Password.Split(KeySeparators, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (parts.Length > 1 && box.Parent is Grid row)
+        {
+            var index = GeminiKeysPanel.Children.IndexOf(row);
+            box.Password = parts[0];
+            for (var i = 1; i < parts.Length; i++)
+            {
+                AddGeminiKeyRow(parts[i], index + i);
+            }
+        }
+
+        CommitGeminiKeys();
+    }
+
+    private void SyncGeminiKeys()
     {
         if (_loading)
         {
@@ -92,7 +127,34 @@ public sealed partial class RecognitionPage : UserControl
 
         _model.SetGeminiKeys(GeminiKeysPanel.Children.OfType<Grid>()
             .Select(row => row.Children.OfType<PasswordBox>().First().Password));
-        _model.SaveSecrets();
+    }
+
+    private bool CommitGeminiKeys()
+    {
+        SyncGeminiKeys();
+        return SaveSecretsOrWarn(GeminiInfo);
+    }
+
+    private bool SaveSecretsOrWarn(InfoBar bar)
+    {
+        if (_model.SaveSecrets())
+        {
+            return true;
+        }
+
+        Show(bar, SettingsModel.SaveFailedMessage, InfoBarSeverity.Error);
+        return false;
+    }
+
+    private bool SaveSettingsOrWarn()
+    {
+        if (_model.SaveSettings())
+        {
+            return true;
+        }
+
+        Show(GeminiInfo, SettingsModel.SaveFailedMessage, InfoBarSeverity.Error);
+        return false;
     }
 
     private void OnGroqKeyChanged(object sender, RoutedEventArgs e)
@@ -103,7 +165,7 @@ public sealed partial class RecognitionPage : UserControl
         }
     }
 
-    private void OnKeyLostFocus(object sender, RoutedEventArgs e) => _model.SaveSecrets();
+    private void OnKeyLostFocus(object sender, RoutedEventArgs e) => SaveSecretsOrWarn(GroqInfo);
 
     private void OnModeChanged(object sender, SelectionChangedEventArgs e)
     {
@@ -113,7 +175,7 @@ public sealed partial class RecognitionPage : UserControl
         }
 
         _model.Settings.Recognition.Mode = ModeButtons.SelectedIndex == 1 ? TranscriptionMode.Verbatim : TranscriptionMode.Smart;
-        _model.SaveSettings();
+        SaveSettingsOrWarn();
     }
 
     private void OnLanguageChanged(object sender, SelectionChangedEventArgs e)
@@ -124,19 +186,49 @@ public sealed partial class RecognitionPage : UserControl
         }
 
         _model.Settings.Recognition.LanguageCodes = Languages[LanguageBox.SelectedIndex].Codes.ToList();
-        _model.SaveSettings();
+        SaveSettingsOrWarn();
     }
 
-    private void OnModelLostFocus(object sender, RoutedEventArgs e)
+    // Текстовые поля моделей: значение уходит в модель сразу при вводе (запись — при потере фокуса и закрытии окна).
+    private void OnModelTextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (_loading)
+        {
+            return;
+        }
+
+        ApplyModelTexts();
+        _model.MarkSettingsDirty();
+    }
+
+    private void ApplyModelTexts()
     {
         var r = _model.Settings.Recognition;
         r.GeminiModel = GeminiModelBox.Text;
         r.GroqWhisperModel = WhisperModelBox.Text;
         r.GroqCleanupModel = CleanupModelBox.Text;
-        _model.SaveSettings(); // пустые значения нормализатор вернёт к умолчаниям
+    }
+
+    private void OnModelLostFocus(object sender, RoutedEventArgs e)
+    {
+        if (_loading)
+        {
+            return;
+        }
+
+        ApplyModelTexts();
+        SaveSettingsOrWarn(); // пустые значения нормализатор вернёт к умолчаниям
+        ShowModelTexts();
+    }
+
+    private void ShowModelTexts()
+    {
+        var r = _model.Settings.Recognition;
+        _loading = true; // присвоение Text вызвало бы TextChanged и снова пометило бы настройки несохранёнными
         GeminiModelBox.Text = r.GeminiModel;
         WhisperModelBox.Text = r.GroqWhisperModel;
         CleanupModelBox.Text = r.GroqCleanupModel;
+        _loading = false;
     }
 
     private void OnFallbackToggled(object sender, RoutedEventArgs e)
@@ -147,7 +239,7 @@ public sealed partial class RecognitionPage : UserControl
         }
 
         _model.Settings.Recognition.GroqFallbackEnabled = FallbackSwitch.IsOn;
-        _model.SaveSettings();
+        SaveSettingsOrWarn();
     }
 
     private void OnCleanupToggled(object sender, RoutedEventArgs e)
@@ -158,16 +250,19 @@ public sealed partial class RecognitionPage : UserControl
         }
 
         _model.Settings.Recognition.GroqCleanupEnabled = CleanupSwitch.IsOn;
-        _model.SaveSettings();
+        SaveSettingsOrWarn();
     }
 
     private async void OnCheckKeys(object sender, RoutedEventArgs e)
     {
         CheckButton.IsEnabled = false;
-        _model.SaveSecrets();
         try
         {
             var r = _model.Settings.Recognition;
+            ApplyModelTexts();
+            SaveSettingsOrWarn(); // нормализует пустые значения моделей до проверки
+            ShowModelTexts();
+            _model.SetGroqKey(GroqKeyBox.Password);
             CommitGeminiKeys();
             var keys = _model.Secrets.GeminiApiKeys;
             if (keys.Count == 0)
@@ -220,6 +315,12 @@ public sealed partial class RecognitionPage : UserControl
                     Show(GroqInfo, ErrorMessages.Describe(ex.Kind, "Groq"), InfoBarSeverity.Error);
                 }
             }
+        }
+        catch (Exception ex)
+        {
+            // Сообщение исключения не содержит ключей: они передаются заголовком, а не в адресе.
+            Log.Error("Проверка ключей", ex);
+            Show(GeminiInfo, "Не удалось выполнить проверку: " + ex.Message, InfoBarSeverity.Error);
         }
         finally
         {

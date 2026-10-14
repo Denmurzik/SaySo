@@ -1,4 +1,5 @@
 using Microsoft.UI.Xaml;
+using SaySo.Core.Diagnostics;
 
 namespace SaySo.Settings;
 
@@ -10,6 +11,7 @@ public partial class App : Application
 
     public App()
     {
+        UnhandledException += OnUnhandledException;
         InitializeComponent();
     }
 
@@ -17,5 +19,12 @@ public partial class App : Application
     {
         _window = new MainWindow();
         _window.Activate();
+    }
+
+    // Необработанное исключение обработчика события не должно ронять окно настроек вместе с несохранёнными данными.
+    private static void OnUnhandledException(object sender, Microsoft.UI.Xaml.UnhandledExceptionEventArgs e)
+    {
+        Log.Error("Необработанное исключение окна настроек", e.Exception);
+        e.Handled = e.Exception is not (OutOfMemoryException or AccessViolationException);
     }
 }

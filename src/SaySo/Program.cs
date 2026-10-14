@@ -34,9 +34,14 @@ public static class Program
         using var mutex = new Mutex(initiallyOwned: true, @"Local\SaySo.Settings", out var createdNew);
         if (!createdNew)
         {
-            var existing = Core.Interop.Native.FindWindowExW(0, 0, null, "SaySo — настройки");
+            var existing = Core.Interop.Native.FindWindowExW(0, 0, null, Settings.SettingsWindowInfo.Title);
             if (existing != 0)
             {
+                if (Core.Interop.Native.IsIconic(existing))
+                {
+                    Core.Interop.Native.ShowWindow(existing, Core.Interop.Native.SW_RESTORE);
+                }
+
                 Core.Interop.Native.SetForegroundWindow(existing);
             }
 

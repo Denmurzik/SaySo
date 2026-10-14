@@ -1,6 +1,8 @@
+using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
+using SaySo.Core.Diagnostics;
 using SaySo.Core.Hotkeys;
 using SaySo.Core.Platform;
 
@@ -8,7 +10,10 @@ namespace SaySo.Settings.Pages;
 
 public sealed partial class GeneralPage : UserControl
 {
+    private static readonly TimeSpan TapSaveDelay = TimeSpan.FromMilliseconds(300);
+
     private readonly SettingsModel _model;
+    private readonly DispatcherQueueTimer _tapSaveTimer;
     private bool _loading = true;
     private bool _revertingAdmin;
 
@@ -24,11 +29,23 @@ public sealed partial class GeneralPage : UserControl
         AutostartSwitch.IsOn = s.AutostartEnabled;
         AdminSwitch.IsOn = s.RunAsAdmin;
         UpdateAutostartAvailability();
+        _tapSaveTimer = DispatcherQueue.CreateTimer();
+        _tapSaveTimer.Interval = TapSaveDelay;
+        _tapSaveTimer.IsRepeating = false;
+        _tapSaveTimer.Tick += (_, _) => SaveOrWarn();
+        Unloaded += (_, _) => _tapSaveTimer.Stop(); // несохранённое уже в модели: его запишет Flush при переходе/закрытии
         _loading = false;
     }
 
     private async void OnHotkeyClick(object sender, RoutedEventArgs e)
     {
+        if (HotkeyCapture.IsActive)
+        {
+            // Страницу пересоздали во время записи: хук в процессе один, вторую запись не начинаем.
+            Show("Запись уже идёт.", InfoBarSeverity.Informational);
+            return;
+        }
+
         HotkeyButton.IsEnabled = false;
         HotkeyButton.Content = "Нажмите сочетание… (Esc — отмена)";
         IpcClient.Send(IpcProtocol.SuspendHotkey);
@@ -47,8 +64,15 @@ public sealed partial class GeneralPage : UserControl
             }
 
             _model.Settings.Hotkey.Keys = keys.ToList();
-            _model.SaveSettings();
-            Show($"Горячая клавиша: {HotkeyFormatter.Format(keys)}", InfoBarSeverity.Success);
+            if (SaveOrWarn())
+            {
+                Show($"Горячая клавиша: {HotkeyFormatter.Format(keys)}", InfoBarSeverity.Success);
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Error("Запись горячей клавиши", ex);
+            Show("Не удалось записать сочетание: " + ex.Message, InfoBarSeverity.Error);
         }
         finally
         {
@@ -71,8 +95,11 @@ public sealed partial class GeneralPage : UserControl
             return;
         }
 
+        // Пока ползунок тянут, на диск не пишем: запись и ReloadSettings — через 300 мс после последнего шага.
         _model.Settings.Hotkey.TapThresholdMs = ms;
-        _model.SaveSettings();
+        _model.MarkSettingsDirty();
+        _tapSaveTimer.Stop();
+        _tapSaveTimer.Start();
     }
 
     private void OnSoundsToggled(object sender, RoutedEventArgs e)
@@ -83,7 +110,7 @@ public sealed partial class GeneralPage : UserControl
         }
 
         _model.Settings.SoundsEnabled = SoundsSwitch.IsOn;
-        _model.SaveSettings();
+        SaveOrWarn();
     }
 
     private void OnAutostartToggled(object sender, RoutedEventArgs e)
@@ -94,7 +121,7 @@ public sealed partial class GeneralPage : UserControl
         }
 
         _model.Settings.AutostartEnabled = AutostartSwitch.IsOn;
-        _model.SaveSettings();
+        SaveOrWarn();
     }
 
     private async void OnAdminToggled(object sender, RoutedEventArgs e)
@@ -105,27 +132,47 @@ public sealed partial class GeneralPage : UserControl
         }
 
         var enable = AdminSwitch.IsOn;
-        var previous = _model.Settings.RunAsAdmin;
         AdminSwitch.IsEnabled = false;
-        _model.Settings.RunAsAdmin = enable;
-        _model.SaveSettings();
-        var error = await AdminModeSwitcher.SetAsync(enable);
-        if (error is not null)
+        try
         {
-            _model.Settings.RunAsAdmin = previous;
-            _model.SaveSettings();
-            _revertingAdmin = true;
-            AdminSwitch.IsOn = previous;
-            _revertingAdmin = false;
-            Show(error, InfoBarSeverity.Error);
+            // Режим записывается в настройки только после успешной установки/снятия задачи (внутри SetAsync).
+            var error = await AdminModeSwitcher.SetAsync(enable, () => PersistAdminMode(enable));
+            if (error is not null)
+            {
+                Show(error, InfoBarSeverity.Error);
+            }
+            else
+            {
+                Show(enable ? "SaySo перезапущен с правами администратора." : "SaySo перезапущен в обычном режиме.", InfoBarSeverity.Success);
+            }
         }
-        else
+        catch (Exception ex)
         {
-            Show(enable ? "SaySo перезапущен с правами администратора." : "SaySo перезапущен в обычном режиме.", InfoBarSeverity.Success);
+            Log.Error("Переключение режима администратора", ex);
+            Show("Не удалось переключить режим: " + ex.Message, InfoBarSeverity.Error);
+        }
+        finally
+        {
+            // Переключатель показывает фактический (сохранённый) режим, а не то, что пользователь щёлкнул.
+            _revertingAdmin = true;
+            AdminSwitch.IsOn = _model.Settings.RunAsAdmin;
+            _revertingAdmin = false;
+            UpdateAutostartAvailability();
+            AdminSwitch.IsEnabled = true;
+        }
+    }
+
+    private bool PersistAdminMode(bool enable)
+    {
+        var previous = _model.Settings.RunAsAdmin;
+        _model.Settings.RunAsAdmin = enable;
+        if (_model.SaveSettings())
+        {
+            return true;
         }
 
-        UpdateAutostartAvailability();
-        AdminSwitch.IsEnabled = true;
+        _model.Settings.RunAsAdmin = previous;
+        return false;
     }
 
     private void UpdateAutostartAvailability()
@@ -134,6 +181,17 @@ public sealed partial class GeneralPage : UserControl
         AutostartHint.Text = _model.Settings.RunAsAdmin
             ? "В режиме администратора SaySo запускается задачей Планировщика при входе в систему."
             : "SaySo тихо живёт в области уведомлений.";
+    }
+
+    private bool SaveOrWarn()
+    {
+        if (_model.SaveSettings())
+        {
+            return true;
+        }
+
+        Show(SettingsModel.SaveFailedMessage, InfoBarSeverity.Error);
+        return false;
     }
 
     private void Show(string message, InfoBarSeverity severity)
