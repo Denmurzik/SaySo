@@ -90,6 +90,48 @@ public class OverlayRendererTests
     }
 
     [Fact]
+    public void Message_EmptyMask_RendersPillAndDotWithoutThrowing()
+    {
+        var frame = new OverlayFrame(OverlayMode.Message, [], 0, OverlayTone.Error, new TextMask([], 0, 0));
+        var px = Render(frame, 1f, out var w, out var h);
+        Assert.Equal((112, 36), (w, h));
+        Assert.True(A(px[18 * w + 12]) > 200); // фон на месте
+        var dot = px[18 * w + 20];
+        Assert.True(R(dot) > G(dot) + 60);
+    }
+
+    [Fact]
+    public void Pixels_ArePremultiplied_ForEveryKind()
+    {
+        var mask = new TextMask(Enumerable.Range(0, 60 * 16).Select(i => (byte)(i % 256)).ToArray(), 60, 16);
+        var frames = new List<OverlayFrame>
+        {
+            Recording(0f),
+            Recording(0.5f),
+            Recording(1f),
+            new(OverlayMode.Processing, [], 0),
+            new(OverlayMode.Processing, [], 450),
+        };
+        foreach (var tone in Enum.GetValues<OverlayTone>())
+        {
+            frames.Add(new OverlayFrame(OverlayMode.Message, [], 0, tone, mask));
+        }
+
+        foreach (var frame in frames)
+        {
+            foreach (var scale in new[] { 1f, 1.5f })
+            {
+                var px = Render(frame, scale, out _, out _);
+                foreach (var p in px)
+                {
+                    var a = A(p);
+                    Assert.True(R(p) <= a && G(p) <= a && (byte)p <= a, $"{frame.Mode}/{frame.Tone}@{scale}: не предумножено {p:X8}");
+                }
+            }
+        }
+    }
+
+    [Fact]
     public void Render_WrongBufferSize_Throws() =>
         Assert.Throws<ArgumentException>(() => OverlayRenderer.Render(new uint[10], 112, 36, Recording(0), 1f));
 }

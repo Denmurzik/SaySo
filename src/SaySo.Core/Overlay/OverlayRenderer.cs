@@ -1,3 +1,5 @@
+using System.Diagnostics.CodeAnalysis;
+
 namespace SaySo.Core.Overlay;
 
 /// <summary>Рисует «пилюлю» оверлея в буфер BGRA с предумноженной альфой. Без GDI — чистая математика.</summary>
@@ -18,10 +20,14 @@ public static class OverlayRenderer
     private const float BackgroundAlpha = 0.88f;
     private const float BorderAlpha = 0.10f;
 
+    /// <remarks>
+    /// Ширину текстовой маски вызывающий ограничивает сам (<c>maxWidthPx ≤ 480·scale − 48·scale</c>, см.
+    /// <see cref="GdiTextMask.RenderText"/>), иначе маска будет жёстко обрезана по правому отступу.
+    /// </remarks>
     public static (int Width, int Height) Measure(OverlayFrame frame, float scale)
     {
         var height = (int)MathF.Round(BaseHeight * scale);
-        if (frame.Mode != OverlayMode.Message || frame.Text is null)
+        if (frame.Mode != OverlayMode.Message || !HasText(frame.Text))
         {
             return ((int)MathF.Round(BaseWidth * scale), height);
         }
@@ -115,7 +121,7 @@ public static class OverlayRenderer
         var dotR = DotSize * scale / 2f;
         FillCircle(px, w, h, Pad * scale + dotR, h / 2f, dotR, Premultiplied(r, g, b, 1f));
 
-        if (frame.Text is not { } text)
+        if (frame.Text is not { } text || !HasText(text))
         {
             return;
         }
@@ -177,6 +183,10 @@ public static class OverlayRenderer
             }
         }
     }
+
+    // Пустая маска (сбой GDI) или несогласованный размер буфера — «текста нет».
+    private static bool HasText([NotNullWhen(true)] TextMask? mask) =>
+        mask is { Width: > 0, Height: > 0 } && mask.Alpha.Length >= mask.Width * mask.Height;
 
     // Доля пикселя [p, p+1), покрытая отрезком [a, b].
     private static float Coverage(int p, float a, float b) => Clamp01(MathF.Min(p + 1, b) - MathF.Max(p, a));

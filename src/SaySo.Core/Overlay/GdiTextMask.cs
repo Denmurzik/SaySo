@@ -1,23 +1,33 @@
+using SaySo.Core.Diagnostics;
 using SaySo.Core.Interop;
 
 namespace SaySo.Core.Overlay;
 
-/// <summary>Растеризация текста/глифа через GDI в маску покрытия (белое на чёрном → значение канала = альфа).</summary>
+/// <summary>
+/// Растеризация текста/глифа через GDI в маску покрытия (белое на чёрном → значение канала = альфа).
+/// При любом сбое GDI возвращает пустую маску 0×0 (никогда не бросает и не пишет в нулевую память).
+/// </summary>
 public static unsafe class GdiTextMask
 {
     private const string TextFont = "Segoe UI Variable Text";
 
+    /// <summary>
+    /// Растеризует однострочный текст. Контракт: вызывающий передаёт <paramref name="maxWidthPx"/> не больше
+    /// 480·scale − 48·scale (максимальная ширина оверлея минус отступы и точка), тогда многоточие ставит GDI;
+    /// иначе <see cref="OverlayRenderer"/> жёстко обрежет маску по правому отступу.
+    /// </summary>
     public static TextMask RenderText(string text, int fontPx, int maxWidthPx)
     {
         return Render(TextFont, fontPx, Native.FW_SEMIBOLD, dc =>
         {
-            Native.SIZE size;
+            Native.SIZE size = default;
+            bool ok;
             fixed (char* p = text)
             {
-                Native.GetTextExtentPoint32W(dc, p, text.Length, &size);
+                ok = Native.GetTextExtentPoint32W(dc, p, text.Length, &size);
             }
 
-            return (Math.Min(size.cx + 2, maxWidthPx), size.cy + 2);
+            return ok ? (Math.Min(size.cx + 2, maxWidthPx), size.cy + 2) : null;
         }, (dc, w, h) =>
         {
             var rect = new Native.RECT { Left = 1, Top = 1, Right = w - 1, Bottom = h };
@@ -38,52 +48,89 @@ public static unsafe class GdiTextMask
         });
     }
 
+    private static TextMask Fail(string what)
+    {
+        // Текст диктовки в журнал не попадает — только факт сбоя.
+        Log.Info($"GdiTextMask: сбой GDI ({what}), возвращена пустая маска");
+        return new TextMask([], 0, 0);
+    }
+
     private static TextMask Render(
         string face,
         int fontPx,
         int weight,
-        Func<nint, (int W, int H)> measure,
+        Func<nint, (int W, int H)?> measure,
         Action<nint, int, int> draw)
     {
         var dc = Native.CreateCompatibleDC(0);
-        var font = Native.CreateFontW(-fontPx, 0, 0, 0, weight, 0, 0, 0, 1, 0, 0, Native.ANTIALIASED_QUALITY, 0, face);
-        var oldFont = Native.SelectObject(dc, font);
+        if (dc == 0)
+        {
+            return Fail("CreateCompatibleDC");
+        }
+
         try
         {
-            var (w, h) = measure(dc);
-            w = Math.Max(1, w);
-            h = Math.Max(1, h);
-            var info = Native.TopDown32(w, h);
-            void* bits;
-            var dib = Native.CreateDIBSection(dc, &info, 0, &bits, 0, 0);
-            var oldBitmap = Native.SelectObject(dc, dib);
+            var font = Native.CreateFontW(-fontPx, 0, 0, 0, weight, 0, 0, 0, 1, 0, 0, Native.ANTIALIASED_QUALITY, 0, face);
+            if (font == 0)
+            {
+                return Fail("CreateFontW");
+            }
+
+            var oldFont = Native.SelectObject(dc, font);
             try
             {
-                new Span<uint>(bits, w * h).Clear();
-                Native.SetBkMode(dc, Native.TRANSPARENT);
-                Native.SetTextColor(dc, 0x00FFFFFF);
-                draw(dc, w, h);
-                Native.GdiFlush();
-
-                var alpha = new byte[w * h];
-                var pixels = (uint*)bits;
-                for (var i = 0; i < alpha.Length; i++)
+                if (measure(dc) is not { } size)
                 {
-                    alpha[i] = (byte)((pixels[i] >> 8) & 0xFF); // зелёный канал (без ClearType все каналы равны)
+                    return Fail("GetTextExtentPoint32W");
                 }
 
-                return new TextMask(alpha, w, h);
+                var w = Math.Max(1, size.W);
+                var h = Math.Max(1, size.H);
+                var info = Native.TopDown32(w, h);
+                void* bits = null;
+                var dib = Native.CreateDIBSection(dc, &info, 0, &bits, 0, 0);
+                if (dib == 0 || bits == null)
+                {
+                    if (dib != 0)
+                    {
+                        Native.DeleteObject(dib);
+                    }
+
+                    return Fail("CreateDIBSection");
+                }
+
+                var oldBitmap = Native.SelectObject(dc, dib);
+                try
+                {
+                    new Span<uint>(bits, w * h).Clear();
+                    Native.SetBkMode(dc, Native.TRANSPARENT);
+                    Native.SetTextColor(dc, 0x00FFFFFF);
+                    draw(dc, w, h);
+                    Native.GdiFlush();
+
+                    var alpha = new byte[w * h];
+                    var pixels = (uint*)bits;
+                    for (var i = 0; i < alpha.Length; i++)
+                    {
+                        alpha[i] = (byte)((pixels[i] >> 8) & 0xFF); // зелёный канал (без ClearType все каналы равны)
+                    }
+
+                    return new TextMask(alpha, w, h);
+                }
+                finally
+                {
+                    Native.SelectObject(dc, oldBitmap);
+                    Native.DeleteObject(dib);
+                }
             }
             finally
             {
-                Native.SelectObject(dc, oldBitmap);
-                Native.DeleteObject(dib);
+                Native.SelectObject(dc, oldFont);
+                Native.DeleteObject(font);
             }
         }
         finally
         {
-            Native.SelectObject(dc, oldFont);
-            Native.DeleteObject(font);
             Native.DeleteDC(dc);
         }
     }
