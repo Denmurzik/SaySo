@@ -46,7 +46,7 @@
             <Border Style="{StaticResource SettingsCard}">
                 <StackPanel Spacing="8">
                     <TextBlock Text="Модель" Style="{StaticResource CardTitle}" />
-                    <TextBox x:Name="GeminiModelBox" LostFocus="OnModelLostFocus" />
+                    <TextBox x:Name="GeminiModelBox" TextChanged="OnModelTextChanged" LostFocus="OnModelLostFocus" />
                 </StackPanel>
             </Border>
 
@@ -87,8 +87,8 @@
             <Border Style="{StaticResource SettingsCard}">
                 <StackPanel Spacing="8">
                     <TextBlock Text="Модели Groq" Style="{StaticResource CardTitle}" />
-                    <TextBox x:Name="WhisperModelBox" Header="Распознавание" LostFocus="OnModelLostFocus" />
-                    <TextBox x:Name="CleanupModelBox" Header="Очистка" LostFocus="OnModelLostFocus" />
+                    <TextBox x:Name="WhisperModelBox" Header="Распознавание" TextChanged="OnModelTextChanged" LostFocus="OnModelLostFocus" />
+                    <TextBox x:Name="CleanupModelBox" Header="Очистка" TextChanged="OnModelTextChanged" LostFocus="OnModelLostFocus" />
                 </StackPanel>
             </Border>
 

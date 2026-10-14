@@ -1,3 +1,4 @@
+using System.Net.WebSockets;
 using SaySo.Core.Engines;
 using SaySo.Core.Engines.Gemini;
 using SaySo.Core.Settings;
@@ -37,5 +38,50 @@ public class GeminiKeyCheckTests
     {
         var t = new FakeWebSocketTransport { ConnectException = new TranscriptionException(EngineErrorKind.RegionBlocked, "регион") };
         Assert.Equal(EngineErrorKind.RegionBlocked, await GeminiKeyCheck.CheckAsync(t, Conn(), TimeSpan.FromSeconds(5)));
+    }
+
+    [Fact]
+    public async Task ExternalCancellation_Propagates_NotTimeout()
+    {
+        var t = new FakeWebSocketTransport();
+        using var cts = new CancellationTokenSource();
+        cts.CancelAfter(100);
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => GeminiKeyCheck.CheckAsync(t, Conn(), TimeSpan.FromSeconds(30), cts.Token));
+        Assert.True(t.Disposed);
+    }
+
+    [Fact]
+    public async Task WebSocketException_IsNetwork()
+    {
+        var t = new FakeWebSocketTransport { ConnectException = new WebSocketException("сбой") };
+        Assert.Equal(EngineErrorKind.Network, await GeminiKeyCheck.CheckAsync(t, Conn(), TimeSpan.FromSeconds(5)));
+        Assert.True(t.Disposed);
+    }
+
+    [Fact]
+    public async Task TransportDisposed_OnErrorAndTimeoutPaths()
+    {
+        var closed = new FakeWebSocketTransport { OnSent = (m, tr) => tr.ServerCloses(1008, "API key not valid.") };
+        await GeminiKeyCheck.CheckAsync(closed, Conn(), TimeSpan.FromSeconds(5));
+        Assert.True(closed.Disposed);
+
+        var silent = new FakeWebSocketTransport();
+        await GeminiKeyCheck.CheckAsync(silent, Conn(), TimeSpan.FromMilliseconds(100));
+        Assert.True(silent.Disposed);
+
+        var connectFail = new FakeWebSocketTransport { ConnectException = new TranscriptionException(EngineErrorKind.RegionBlocked, "регион") };
+        await GeminiKeyCheck.CheckAsync(connectFail, Conn(), TimeSpan.FromSeconds(5));
+        Assert.True(connectFail.Disposed);
+    }
+
+    [Fact]
+    public async Task Key_GoesInHeader_NotInUri()
+    {
+        var t = new FakeWebSocketTransport { OnSent = (m, tr) => tr.ServerSends("""{"setupComplete":{}}""") };
+        await GeminiKeyCheck.CheckAsync(t, Conn(), TimeSpan.FromSeconds(5));
+        Assert.DoesNotContain("KEY", t.ConnectedUri!.ToString());
+        Assert.Equal("KEY", t.Headers!["x-goog-api-key"]);
+        Assert.DoesNotContain(t.Sent, m => m.Contains("KEY"));
     }
 }

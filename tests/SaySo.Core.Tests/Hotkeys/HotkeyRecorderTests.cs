@@ -56,4 +56,27 @@ public class HotkeyRecorderTests
         Assert.False(r.OnKey(Up(RControl)));
         Assert.Null(r.Result);
     }
+
+    [Fact]
+    public void EscapeWhileAnotherKeyHeld_IsRecordedNotCancel()
+    {
+        var r = new HotkeyRecorder();
+        r.OnKey(Down(LControl));
+        Assert.False(r.OnKey(Down(Escape)));
+        Assert.False(r.IsCancelled);
+        Assert.False(r.OnKey(Up(Escape)));
+        Assert.True(r.OnKey(Up(LControl)));
+        Assert.Equal([LControl, Escape], r.Result);
+    }
+
+    [Fact]
+    public void ReleaseOrderDoesNotChangeResult()
+    {
+        var r = new HotkeyRecorder();
+        r.OnKey(Down(LControl));
+        r.OnKey(Down(LWin));
+        Assert.False(r.OnKey(Up(LControl)));
+        Assert.True(r.OnKey(Up(LWin)));
+        Assert.Equal([LControl, LWin], r.Result);
+    }
 }

@@ -55,6 +55,14 @@ public sealed partial class MicrophonePage : UserControl
             }
         }
 
+        // Сохранённого устройства нет в списке (отключено): показываем его отдельным пунктом, чтобы выбор
+        // не сбросился на «по умолчанию» сам собой и пользователь видел, что именно сохранено.
+        if (_model.Settings.MicrophoneDeviceId is { } savedId && selected == 0)
+        {
+            DevicesBox.Items.Add(new ComboBoxItem { Content = "Сохранённый микрофон (сейчас недоступен)", Tag = savedId });
+            selected = DevicesBox.Items.Count - 1;
+        }
+
         DevicesBox.SelectedIndex = selected;
         _loading = false;
     }
@@ -66,16 +74,17 @@ public sealed partial class MicrophonePage : UserControl
             return;
         }
 
-        try
+        // SelectionChanged приходит и асинхронно после присвоения SelectedIndex при открытии: то же значение — не изменение.
+        var deviceId = item.Tag as string;
+        if (deviceId == _model.Settings.MicrophoneDeviceId)
         {
-            _model.Settings.MicrophoneDeviceId = item.Tag as string;
-            _model.SaveSettings();
-        }
-        catch (Exception ex)
-        {
-            Log.Error("MicrophonePage.SaveDevice", ex);
-            ShowMessage("Не удалось сохранить — файл занят, попробуйте ещё раз.", privacyLink: false);
             return;
+        }
+
+        _model.Settings.MicrophoneDeviceId = deviceId;
+        if (!_model.SaveSettings())
+        {
+            ShowMessage(SettingsModel.SaveFailedMessage, privacyLink: false);
         }
 
         if (TestButton.IsChecked == true)

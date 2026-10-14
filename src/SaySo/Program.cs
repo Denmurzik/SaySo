@@ -15,7 +15,7 @@ public static class Program
         {
             LaunchMode.Settings => RunSettings(),
             LaunchMode.InstallAdminTask => InstallAdminTask(),
-            LaunchMode.RemoveAdminTask => AdminTask.Remove(),
+            LaunchMode.RemoveAdminTask => RemoveAdminTask(),
             LaunchMode.Simulate => 2, // задача 16
             // Демон никогда не касается типов XAML — иначе в процесс загрузится Microsoft.UI.Xaml.dll.
             _ => Daemon.DaemonHost.Run(),
@@ -29,27 +29,58 @@ public static class Program
         return AdminTask.Install(exe);
     }
 
+    private static int RemoveAdminTask() =>
+        AdminTask.Exists() ? AdminTask.Remove() : 0; // задачи уже нет — цель достигнута, schtasks /Delete вернул бы ошибку
+
     private static int RunSettings()
     {
-        using var mutex = new Mutex(initiallyOwned: true, @"Local\SaySo.Settings", out var createdNew);
-        if (!createdNew)
+        Mutex? mutex = null;
+        bool createdNew;
+        try
         {
-            var existing = Core.Interop.Native.FindWindowExW(0, 0, null, "SaySo — настройки");
-            if (existing != 0)
-            {
-                Core.Interop.Native.SetForegroundWindow(existing);
-            }
-
-            return 0;
+            mutex = new Mutex(initiallyOwned: true, @"Local\SaySo.Settings", out createdNew);
+        }
+        catch (UnauthorizedAccessException)
+        {
+            createdNew = false; // мьютекс создан элевированным экземпляром окна настроек: окно уже открыто
         }
 
-        WinRT.ComWrappersSupport.InitializeComWrappers();
-        Application.Start(callbackParams =>
+        try
         {
-            var context = new DispatcherQueueSynchronizationContext(DispatcherQueue.GetForCurrentThread());
-            SynchronizationContext.SetSynchronizationContext(context);
-            _ = new Settings.App();
-        });
-        return 0;
+            if (!createdNew)
+            {
+                ActivateExistingSettingsWindow();
+                return 0;
+            }
+
+            WinRT.ComWrappersSupport.InitializeComWrappers();
+            Application.Start(callbackParams =>
+            {
+                var context = new DispatcherQueueSynchronizationContext(DispatcherQueue.GetForCurrentThread());
+                SynchronizationContext.SetSynchronizationContext(context);
+                _ = new Settings.App();
+            });
+            return 0;
+        }
+        finally
+        {
+            mutex?.Dispose();
+        }
+    }
+
+    private static void ActivateExistingSettingsWindow()
+    {
+        var existing = Core.Interop.Native.FindWindowExW(0, 0, Settings.SettingsWindowInfo.WindowClass, Settings.SettingsWindowInfo.Title);
+        if (existing == 0)
+        {
+            return;
+        }
+
+        if (Core.Interop.Native.IsIconic(existing))
+        {
+            Core.Interop.Native.ShowWindow(existing, Core.Interop.Native.SW_RESTORE);
+        }
+
+        Core.Interop.Native.SetForegroundWindow(existing);
     }
 }

@@ -1,6 +1,5 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using SaySo.Core.Diagnostics;
 using SaySo.Core.Settings;
 
 namespace SaySo.Settings.Pages;
@@ -26,45 +25,45 @@ public sealed partial class DictionaryPage : UserControl
 
     private void OnSave(object sender, RoutedEventArgs e)
     {
-        if (!TrySave())
-        {
-            Info.Message = "Не удалось сохранить — файл занят, попробуйте ещё раз.";
-            Info.Severity = InfoBarSeverity.Error;
-            Info.IsOpen = true;
-            return;
-        }
-
+        var saved = Commit();
         TermsBox.Text = string.Join("\r", _model.Settings.Vocabulary);
         _savedText = TermsBox.Text;
-        Info.Message = $"Сохранено терминов: {_model.Settings.Vocabulary.Count}.";
-        Info.Severity = InfoBarSeverity.Success;
+        if (saved)
+        {
+            Info.Message = $"Сохранено терминов: {_model.Settings.Vocabulary.Count}.";
+            Info.Severity = InfoBarSeverity.Success;
+        }
+        else
+        {
+            Info.Message = SettingsModel.SaveFailedMessage;
+            Info.Severity = InfoBarSeverity.Error;
+        }
+
         Info.IsOpen = true;
     }
 
     /// <summary>Уход со страницы или закрытие окна не должны терять несохранённые правки.</summary>
     private void OnUnloaded(object sender, RoutedEventArgs e) => SaveIfChanged();
 
+    /// <summary>
+    /// Передать правки в модель и записать. Если файл занят, значение остаётся в модели «несохранённым»
+    /// (его повторно запишет Flush при переходе/закрытии и покажет предупреждение), поэтому повторно не пытаемся.
+    /// </summary>
     internal void SaveIfChanged()
     {
-        if (TermsBox.Text != _savedText && TrySave())
+        if (TermsBox.Text == _savedText)
         {
-            _savedText = TermsBox.Text;
+            return;
         }
+
+        _savedText = TermsBox.Text;
+        Commit();
     }
 
-    private bool TrySave()
+    private bool Commit()
     {
-        try
-        {
-            _model.Settings.Vocabulary = Parse(TermsBox.Text);
-            _model.SaveSettings(); // нормализация: обрезка, дубликаты, лимит 1000
-            return true;
-        }
-        catch (Exception e)
-        {
-            Log.Error("DictionaryPage.Save", e);
-            return false;
-        }
+        _model.Settings.Vocabulary = Parse(TermsBox.Text);
+        return _model.SaveSettings(); // нормализация: обрезка, дубликаты, лимит 1000
     }
 
     private void UpdateCounter()
