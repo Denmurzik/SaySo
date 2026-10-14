@@ -48,7 +48,7 @@ public class GeminiLiveSessionTests
         s.Start();
         s.PushAudio(new byte[3200]);
 
-        var text = await s.CompleteAsync(CancellationToken.None).WaitAsync(TestTimeout);
+        var text = await s.CompleteAsync(TestContext.Current.CancellationToken).WaitAsync(TestTimeout, TestContext.Current.CancellationToken);
 
         Assert.Equal("Встретимся в субботу.", text);
         Assert.Equal(new Uri("wss://example.test/ws/BidiGenerateContent"), t.ConnectedUri);
@@ -65,7 +65,7 @@ public class GeminiLiveSessionTests
         s.PushAudio(new byte[] { 1, 0 });
         s.PushAudio(new byte[] { 2, 0 });
         s.PushAudio(new byte[] { 3, 0 });
-        await Task.Delay(150);
+        await Task.Delay(150, TestContext.Current.CancellationToken);
         Assert.Single(t.Sent); // только setup
 
         t.OnSent = (msg, tr) =>
@@ -76,8 +76,8 @@ public class GeminiLiveSessionTests
             }
         };
         t.ServerSends("""{"setupComplete":{}}""");
-        var completion = s.CompleteAsync(CancellationToken.None);
-        await completion.WaitAsync(TestTimeout);
+        var completion = s.CompleteAsync(TestContext.Current.CancellationToken);
+        await completion.WaitAsync(TestTimeout, TestContext.Current.CancellationToken);
 
         var sent = t.Sent;
         Assert.Contains("\"setup\"", sent[0]);
@@ -103,7 +103,7 @@ public class GeminiLiveSessionTests
         };
         await using var s = new GeminiLiveSession(t, Conn(), Fast);
         s.Start();
-        Assert.Equal("Первое. Второе.", await s.CompleteAsync(CancellationToken.None).WaitAsync(TestTimeout));
+        Assert.Equal("Первое. Второе.", await s.CompleteAsync(TestContext.Current.CancellationToken).WaitAsync(TestTimeout, TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -123,7 +123,7 @@ public class GeminiLiveSessionTests
         var interims = new List<string>();
         s.InterimText += x => { lock (interims) { interims.Add(x); } };
         s.Start();
-        Assert.Equal("почти готово", await s.CompleteAsync(CancellationToken.None).WaitAsync(TestTimeout));
+        Assert.Equal("почти готово", await s.CompleteAsync(TestContext.Current.CancellationToken).WaitAsync(TestTimeout, TestContext.Current.CancellationToken));
         Assert.Contains("почти готово", interims);
     }
 
@@ -134,7 +134,7 @@ public class GeminiLiveSessionTests
         await using var s = new GeminiLiveSession(t, Conn(), Fast);
         s.Start();
         s.PushAudio(new byte[3200]);
-        var ex = await Assert.ThrowsAsync<TranscriptionException>(() => s.CompleteAsync(CancellationToken.None).WaitAsync(TestTimeout));
+        var ex = await Assert.ThrowsAsync<TranscriptionException>(() => s.CompleteAsync(TestContext.Current.CancellationToken).WaitAsync(TestTimeout, TestContext.Current.CancellationToken));
         Assert.Equal(EngineErrorKind.Timeout, ex.Kind);
     }
 
@@ -152,7 +152,7 @@ public class GeminiLiveSessionTests
         await using var s = new GeminiLiveSession(t, Conn(), Fast);
         s.Start();
         s.PushAudio(new byte[3200]);
-        var ex = await Assert.ThrowsAsync<TranscriptionException>(() => s.CompleteAsync(CancellationToken.None).WaitAsync(TestTimeout));
+        var ex = await Assert.ThrowsAsync<TranscriptionException>(() => s.CompleteAsync(TestContext.Current.CancellationToken).WaitAsync(TestTimeout, TestContext.Current.CancellationToken));
         Assert.Equal(EngineErrorKind.QuotaExceeded, ex.Kind);
     }
 
@@ -162,7 +162,7 @@ public class GeminiLiveSessionTests
         var t = new FakeWebSocketTransport { ConnectException = new TranscriptionException(EngineErrorKind.Network, "нет сети") };
         await using var s = new GeminiLiveSession(t, Conn(), Fast);
         s.Start();
-        var ex = await Assert.ThrowsAsync<TranscriptionException>(() => s.CompleteAsync(CancellationToken.None).WaitAsync(TestTimeout));
+        var ex = await Assert.ThrowsAsync<TranscriptionException>(() => s.CompleteAsync(TestContext.Current.CancellationToken).WaitAsync(TestTimeout, TestContext.Current.CancellationToken));
         Assert.Equal(EngineErrorKind.Network, ex.Kind);
     }
 
@@ -172,7 +172,7 @@ public class GeminiLiveSessionTests
         var t = new FakeWebSocketTransport { ConnectException = new System.Net.WebSockets.WebSocketException("обрыв") };
         await using var s = new GeminiLiveSession(t, Conn(), Fast);
         s.Start();
-        var ex = await Assert.ThrowsAsync<TranscriptionException>(() => s.CompleteAsync(CancellationToken.None).WaitAsync(TestTimeout));
+        var ex = await Assert.ThrowsAsync<TranscriptionException>(() => s.CompleteAsync(TestContext.Current.CancellationToken).WaitAsync(TestTimeout, TestContext.Current.CancellationToken));
         Assert.Equal(EngineErrorKind.Network, ex.Kind);
     }
 
@@ -182,7 +182,7 @@ public class GeminiLiveSessionTests
         var t = new FakeWebSocketTransport();
         await using var s = new GeminiLiveSession(t, Conn(), Fast with { SetupTimeoutMs = 200 });
         s.Start();
-        var ex = await Assert.ThrowsAsync<TranscriptionException>(() => s.CompleteAsync(CancellationToken.None).WaitAsync(TestTimeout));
+        var ex = await Assert.ThrowsAsync<TranscriptionException>(() => s.CompleteAsync(TestContext.Current.CancellationToken).WaitAsync(TestTimeout, TestContext.Current.CancellationToken));
         Assert.Equal(EngineErrorKind.Timeout, ex.Kind);
     }
 
@@ -202,7 +202,7 @@ public class GeminiLiveSessionTests
         };
         await using var s = new GeminiLiveSession(t, Conn(), Fast);
         s.Start();
-        Assert.Equal("Успели.", await s.CompleteAsync(CancellationToken.None).WaitAsync(TestTimeout));
+        Assert.Equal("Успели.", await s.CompleteAsync(TestContext.Current.CancellationToken).WaitAsync(TestTimeout, TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -211,9 +211,9 @@ public class GeminiLiveSessionTests
         var t = new FakeWebSocketTransport(); // setupComplete так и не придёт
         var s = new GeminiLiveSession(t, Conn(), Fast with { SetupTimeoutMs = 10_000 });
         s.Start();
-        var completion = s.CompleteAsync(CancellationToken.None);
+        var completion = s.CompleteAsync(TestContext.Current.CancellationToken);
         await s.DisposeAsync();
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => completion.WaitAsync(TestTimeout));
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => completion.WaitAsync(TestTimeout, TestContext.Current.CancellationToken));
         Assert.True(t.Disposed);
     }
 
@@ -225,7 +225,7 @@ public class GeminiLiveSessionTests
         var failures = new List<EngineErrorKind>();
         bad.Failed += e => failures.Add(e.Kind);
         bad.Start();
-        await Assert.ThrowsAsync<TranscriptionException>(() => bad.CompleteAsync(CancellationToken.None).WaitAsync(TestTimeout));
+        await Assert.ThrowsAsync<TranscriptionException>(() => bad.CompleteAsync(TestContext.Current.CancellationToken).WaitAsync(TestTimeout, TestContext.Current.CancellationToken));
         Assert.Equal([EngineErrorKind.QuotaExceeded], failures);
 
         var ok = AutoSetup();
@@ -242,7 +242,7 @@ public class GeminiLiveSessionTests
         var raised = false;
         good.Failed += _ => raised = true;
         good.Start();
-        Assert.Equal("Да.", await good.CompleteAsync(CancellationToken.None).WaitAsync(TestTimeout));
+        Assert.Equal("Да.", await good.CompleteAsync(TestContext.Current.CancellationToken).WaitAsync(TestTimeout, TestContext.Current.CancellationToken));
         Assert.False(raised);
     }
 
@@ -270,12 +270,12 @@ public class GeminiLiveSessionTests
             while (!failed.Task.IsCompleted)
             {
                 s.PushAudio(new byte[3200]);
-                await Task.Delay(10);
+                await Task.Delay(10, TestContext.Current.CancellationToken);
             }
-        });
-        Assert.Equal(EngineErrorKind.QuotaExceeded, await failed.Task.WaitAsync(TestTimeout));
-        await pusher.WaitAsync(TestTimeout);
-        var ex = await Assert.ThrowsAsync<TranscriptionException>(() => s.CompleteAsync(CancellationToken.None).WaitAsync(TestTimeout));
+        }, TestContext.Current.CancellationToken);
+        Assert.Equal(EngineErrorKind.QuotaExceeded, await failed.Task.WaitAsync(TestTimeout, TestContext.Current.CancellationToken));
+        await pusher.WaitAsync(TestTimeout, TestContext.Current.CancellationToken);
+        var ex = await Assert.ThrowsAsync<TranscriptionException>(() => s.CompleteAsync(TestContext.Current.CancellationToken).WaitAsync(TestTimeout, TestContext.Current.CancellationToken));
         Assert.Equal(EngineErrorKind.QuotaExceeded, ex.Kind);
     }
 
@@ -285,7 +285,7 @@ public class GeminiLiveSessionTests
         var t = new FakeWebSocketTransport { ConnectException = new InvalidOperationException("сбой") };
         await using var s = new GeminiLiveSession(t, Conn(), Fast);
         s.Start();
-        var ex = await Assert.ThrowsAsync<TranscriptionException>(() => s.CompleteAsync(CancellationToken.None).WaitAsync(TestTimeout));
+        var ex = await Assert.ThrowsAsync<TranscriptionException>(() => s.CompleteAsync(TestContext.Current.CancellationToken).WaitAsync(TestTimeout, TestContext.Current.CancellationToken));
         Assert.Equal(EngineErrorKind.Protocol, ex.Kind);
     }
 
@@ -298,7 +298,7 @@ public class GeminiLiveSessionTests
         s.Failed += _ => throw new InvalidOperationException("подписчик");
         s.Failed += _ => Interlocked.Increment(ref second);
         s.Start();
-        var ex = await Assert.ThrowsAsync<TranscriptionException>(() => s.CompleteAsync(CancellationToken.None).WaitAsync(TestTimeout));
+        var ex = await Assert.ThrowsAsync<TranscriptionException>(() => s.CompleteAsync(TestContext.Current.CancellationToken).WaitAsync(TestTimeout, TestContext.Current.CancellationToken));
         Assert.Equal(EngineErrorKind.Network, ex.Kind);
         Assert.Equal(1, Volatile.Read(ref second));
     }
@@ -337,12 +337,12 @@ public class GeminiLiveSessionTests
 
         await using (var first = engine.StartSession())
         {
-            await Assert.ThrowsAsync<TranscriptionException>(() => first.CompleteAsync(CancellationToken.None).WaitAsync(TestTimeout));
+            await Assert.ThrowsAsync<TranscriptionException>(() => first.CompleteAsync(TestContext.Current.CancellationToken).WaitAsync(TestTimeout, TestContext.Current.CancellationToken));
         }
 
         await using (var second = engine.StartSession())
         {
-            await Assert.ThrowsAsync<TranscriptionException>(() => second.CompleteAsync(CancellationToken.None).WaitAsync(TestTimeout));
+            await Assert.ThrowsAsync<TranscriptionException>(() => second.CompleteAsync(TestContext.Current.CancellationToken).WaitAsync(TestTimeout, TestContext.Current.CancellationToken));
         }
 
         Assert.Equal("key-1", transports[0].Headers!["x-goog-api-key"]);
