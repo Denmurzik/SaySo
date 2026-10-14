@@ -40,6 +40,7 @@ public sealed class DictationCoordinator(
     private IDisposable? _autoStopTimer;
     private long _pressedAt;
     private PendingError? _pending;
+    private bool _cancelledWhileStarting; // Cancel пришёл, пока микрофон ещё запускался: это было сочетание клавиш
 
     public event Action? SessionEnded;
 
@@ -71,6 +72,7 @@ public sealed class DictationCoordinator(
 
         DiscardPending(endSession: false); // отложенная ошибка прошлой попытки: новое нажатие её отменяет
         _pressedAt = time.GetTimestamp();
+        _cancelledWhileStarting = false;
         State = DictationState.Recording;
         _starting = StartCoreAsync();
         return _starting;
@@ -109,7 +111,15 @@ public sealed class DictationCoordinator(
                 _run = null;
                 State = DictationState.Idle;
                 var remaining = EngineStartDelay - time.GetElapsedTime(_pressedAt);
-                if (remaining > TimeSpan.Zero)
+                if (_cancelledWhileStarting)
+                {
+                    // Сочетание клавиш (Cancel пришёл до сбоя) — ошибку не показываем, даже если сбой медленнее 150 мс
+                    // (холодный старт, отказ в доступе, таймаут): только то, чем заканчивается сессия.
+                    _cancelledWhileStarting = false;
+                    resetHotkey();
+                    SessionEnded?.Invoke();
+                }
+                else if (remaining > TimeSpan.Zero)
                 {
                     // Cancel/Stop раньше EngineStartDelay (это было сочетание клавиш) отменят показ. Сброс автомата хука и
                     // SessionEnded — вместе с показом или отменой: после сброса автомат ушёл бы в Idle и не заметил бы вторую клавишу.
@@ -268,9 +278,11 @@ public sealed class DictationCoordinator(
 
         if (_starting is { IsCompleted: false } starting)
         {
+            _cancelledWhileStarting = true; // если запуск завершится сбоем, ошибку показывать не нужно (см. StartCoreAsync)
             await starting;
         }
 
+        _cancelledWhileStarting = false;
         if (State != DictationState.Recording || !ReferenceEquals(run, _run))
         {
             DiscardPending(endSession: true); // запуск микрофона не удался, пока ждали: Cancel отменяет показ ошибки

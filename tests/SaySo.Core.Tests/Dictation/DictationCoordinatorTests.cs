@@ -214,6 +214,100 @@ public sealed class DictationCoordinatorTests : IDisposable
     }
 
     [Fact]
+    public async Task MicrophoneFailure_CancelBeforeSlowFailure_IsSilent()
+    {
+        // Холодный старт: сбой приходит позже 150 мс, а правый Ctrl+C — раньше него.
+        var micReady = new TaskCompletionSource();
+        var ended = 0;
+        var coordinator = CreateWith((d, e) => new FakeAudioSource(d, e) { StartResult = micReady.Task }, () => ended++);
+        var starting = coordinator.HandleAsync(HotkeyAction.StartRecording);
+
+        _time.Advance(TimeSpan.FromMilliseconds(100));
+        var cancelling = coordinator.HandleAsync(HotkeyAction.Cancel);
+        _time.Advance(TimeSpan.FromMilliseconds(200)); // сбой на 300-й миллисекунде
+        micReady.SetException(Denied());
+        await starting;
+        await cancelling;
+
+        Assert.Empty(_overlay.Calls);
+        Assert.Empty(_feedback.Sounds);
+        Assert.Empty(_feedback.Tray);
+        Assert.Equal(DictationState.Idle, coordinator.State);
+        Assert.Equal(1, _resets); // автомат хука сбрасывается и SessionEnded поднимается ровно один раз
+        Assert.Equal(1, ended);
+        Assert.Empty(_primary.Sessions);
+    }
+
+    [Fact]
+    public async Task MicrophoneFailure_StopBeforeSlowFailure_ShowsError()
+    {
+        // Stop — удержание дольше порога, то есть настоящая попытка диктовки: ошибку показываем.
+        var micReady = new TaskCompletionSource();
+        var ended = 0;
+        var coordinator = CreateWith((d, e) => new FakeAudioSource(d, e) { StartResult = micReady.Task }, () => ended++);
+        var starting = coordinator.HandleAsync(HotkeyAction.StartRecording);
+
+        _time.Advance(TimeSpan.FromMilliseconds(100));
+        var stopping = coordinator.HandleAsync(HotkeyAction.StopRecording);
+        _time.Advance(TimeSpan.FromMilliseconds(200));
+        micReady.SetException(Denied());
+        await starting;
+        await stopping;
+
+        Assert.StartsWith("message:Error:", _overlay.Calls.Single());
+        Assert.Equal([SoundKind.Error], _feedback.Sounds);
+        Assert.Equal(1, _resets);
+        Assert.Equal(1, ended);
+    }
+
+    [Fact]
+    public async Task MicrophoneStartHangs_CancelBeforeTimeout_IsSilent()
+    {
+        var hung = new TaskCompletionSource();
+        FakeAudioSource? source = null;
+        var ended = 0;
+        var coordinator = CreateWith((d, e) => source = new FakeAudioSource(d, e) { StartResult = hung.Task }, () => ended++);
+        var starting = coordinator.HandleAsync(HotkeyAction.StartRecording);
+        var cancelling = coordinator.HandleAsync(HotkeyAction.Cancel);
+
+        _time.Advance(DictationCoordinator.MicrophoneStartTimeout);
+        _scheduler.Fire(DictationCoordinator.MicrophoneStartTimeout);
+        await starting;
+        await cancelling;
+
+        Assert.Empty(_overlay.Calls);
+        Assert.Empty(_feedback.Sounds);
+        Assert.Empty(_feedback.Tray);
+        Assert.True(source!.Disposed);
+        Assert.Equal(1, _resets);
+        Assert.Equal(1, ended);
+    }
+
+    [Fact]
+    public async Task MicrophoneFailure_AfterSilentCancelledOne_NextPressStillShowsItsError()
+    {
+        // Флаг «Cancel пришёл во время старта» относится к одной попытке и не должен глушить следующую.
+        var micReady = new TaskCompletionSource();
+        var second = new TaskCompletionSource();
+        var attempt = 0;
+        var coordinator = CreateWith((d, e) => new FakeAudioSource(d, e) { StartResult = attempt++ == 0 ? micReady.Task : second.Task });
+        var starting = coordinator.HandleAsync(HotkeyAction.StartRecording);
+        var cancelling = coordinator.HandleAsync(HotkeyAction.Cancel);
+        micReady.SetException(Denied());
+        await starting;
+        await cancelling;
+        Assert.Empty(_overlay.Calls);
+
+        var next = coordinator.HandleAsync(HotkeyAction.StartRecording);
+        _time.Advance(TimeSpan.FromMilliseconds(400));
+        second.SetException(Denied());
+        await next;
+
+        Assert.StartsWith("message:Error:", _overlay.Calls.Single());
+        Assert.Equal([SoundKind.Error], _feedback.Sounds);
+    }
+
+    [Fact]
     public async Task MicrophoneFailure_ThenNewPress_DropsOldErrorWithoutResettingHotkey()
     {
         var failing = true;
