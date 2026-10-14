@@ -131,9 +131,51 @@ public class HotkeyStateMachineTests
     {
         var m = RightCtrl();
         m.OnKey(Down(RControl, uint.MaxValue - 100));
-        // 50 мс спустя, но счётчик переполнился: это короткое нажатие
+        // 150 мс спустя, но счётчик переполнился: это короткое нажатие
         Assert.Equal(HotkeyAction.None, m.OnKey(Up(RControl, 49)).Action);
         Assert.True(m.IsHandsFree);
+    }
+
+    [Fact]
+    public void TickWraparound_LongHold_StopsRecording()
+    {
+        var m = RightCtrl();
+        m.OnKey(Down(RControl, uint.MaxValue - 100));
+        // 501 мс спустя через переполнение счётчика: это удержание, а не касание
+        Assert.Equal(HotkeyAction.StopRecording, m.OnKey(Up(RControl, 400)).Action);
+        Assert.False(m.IsRecording);
+    }
+
+    [Fact]
+    public void LostKeyUp_WhileHeld_NextPressStops()
+    {
+        var m = RightCtrl();
+        Assert.Equal(HotkeyAction.StartRecording, m.OnKey(Down(RControl, 1000)).Action);
+        // Отпускание потеряно (UAC, экран блокировки)
+        Assert.Equal(HotkeyAction.StopRecording, m.OnKey(Down(RControl, 5000)).Action);
+        Assert.False(m.IsRecording);
+        Assert.Equal(HotkeyAction.None, m.OnKey(Up(RControl, 5100)).Action);
+        Assert.Equal(HotkeyAction.StartRecording, m.OnKey(Down(RControl, 9000)).Action);
+    }
+
+    [Fact]
+    public void LostKeyUp_AfterReset_WithoutPhysicalCheck_NextPressStarts()
+    {
+        var m = RightCtrl();
+        Assert.Equal(HotkeyAction.StartRecording, m.OnKey(Down(RControl, 1000)).Action);
+        m.Reset();
+        Assert.Equal(HotkeyAction.StartRecording, m.OnKey(Down(RControl, 5000)).Action);
+    }
+
+    [Fact]
+    public void SlowAutorepeat_IsStillIgnored()
+    {
+        var m = RightCtrl();
+        Assert.Equal(HotkeyAction.StartRecording, m.OnKey(Down(RControl, 1000)).Action);
+        Assert.Equal(HotkeyAction.None, m.OnKey(Down(RControl, 2000)).Action);
+        Assert.Equal(HotkeyAction.None, m.OnKey(Down(RControl, 2033)).Action);
+        Assert.Equal(HotkeyAction.None, m.OnKey(Down(RControl, 2066)).Action);
+        Assert.Equal(HotkeyAction.StopRecording, m.OnKey(Up(RControl, 2500)).Action);
     }
 
     [Fact]

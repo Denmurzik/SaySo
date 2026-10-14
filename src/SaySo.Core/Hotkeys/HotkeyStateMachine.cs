@@ -6,8 +6,15 @@ namespace SaySo.Core.Hotkeys;
 /// </summary>
 public sealed class HotkeyStateMachine
 {
+    /// <summary>
+    /// Повторное нажатие уже «нажатой» клавиши позже этого срока — новое нажатие, а не автоповтор
+    /// (задержка автоповтора Windows ≤ 1 с, интервал ≤ ~400 мс): отпускание было потеряно.
+    /// </summary>
+    public const int StaleRepeatMs = 1500;
+
     private readonly HashSet<int> _hotkey;
     private readonly HashSet<int> _down = [];
+    private readonly Dictionary<int, long> _lastDownAt = [];
     private readonly Func<int, bool>? _isPhysicallyDown;
     private State _state = State.Idle;
     private long _pressedAt;
@@ -52,12 +59,30 @@ public sealed class HotkeyStateMachine
         if (!e.IsDown)
         {
             _down.Remove(e.VirtualKey);
+            _lastDownAt.Remove(e.VirtualKey);
             return OnKeyUp(e);
         }
 
+        var releaseLost = false;
         if (!_down.Add(e.VirtualKey))
         {
-            return HotkeyDecision.Pass; // автоповтор
+            if (_lastDownAt.TryGetValue(e.VirtualKey, out var previousAt)
+                && unchecked((uint)e.TimestampMs - (uint)previousAt) <= StaleRepeatMs)
+            {
+                _lastDownAt[e.VirtualKey] = e.TimestampMs;
+                return HotkeyDecision.Pass; // автоповтор
+            }
+
+            // Слишком долгая пауза между повторами: отпускание клавиши потеряно (UAC, экран блокировки).
+            releaseLost = true;
+        }
+
+        _lastDownAt[e.VirtualKey] = e.TimestampMs;
+
+        if (releaseLost && _state == State.Held)
+        {
+            // Удержание завершилось незамеченным отпусканием — считаем его коротким нажатием.
+            _state = State.HandsFree;
         }
 
         if (_down.Count > 1)
@@ -138,6 +163,15 @@ public sealed class HotkeyStateMachine
             return;
         }
 
-        _down.RemoveWhere(vk => vk != except && !_isPhysicallyDown(vk));
+        _down.RemoveWhere(vk =>
+        {
+            if (vk == except || _isPhysicallyDown(vk))
+            {
+                return false;
+            }
+
+            _lastDownAt.Remove(vk);
+            return true;
+        });
     }
 }
