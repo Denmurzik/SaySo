@@ -80,7 +80,7 @@ internal sealed class DaemonHost : IDisposable
             (onData, onError) => new WasapiAudioSource(_settings.MicrophoneDeviceId, _settings.MicrophoneDeviceName, onData, onError),
             _overlay,
             new InserterOutput(_inserter, () => _dictationTarget = _pressTarget),
-            new DaemonFeedback(OnDictationTray),
+            new DaemonFeedback(OnDictationTray, () => _settings.SoundTheme),
             new WindowScheduler(_window, OnSchedulingFailed),
             _history,
             () => _settings,
@@ -454,6 +454,7 @@ internal sealed class DaemonHost : IDisposable
                 if (_settingsStore.TryLoad(out var reloaded))
                 {
                     _settings = reloaded;
+                    SoundPlayer.Select(_settings.SoundTheme); // буферы прежней темы отпускаются сразу, а не при следующем сигнале
                 }
                 else
                 {
@@ -648,7 +649,7 @@ internal sealed class DaemonHost : IDisposable
             UpdateTray(TrayState.Error, OverlayMessages.StartFailed);
             if (_settings.SoundsEnabled)
             {
-                SoundPlayer.Play(SoundKind.Error);
+                SoundPlayer.Play(SoundKind.Error, _settings.SoundTheme);
             }
 
             await cancel;

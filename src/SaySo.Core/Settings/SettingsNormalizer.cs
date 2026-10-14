@@ -1,3 +1,5 @@
+using SaySo.Core.Audio;
+
 namespace SaySo.Core.Settings;
 
 /// <summary>Приводит настройки к допустимым значениям (в т.ч. после ручной правки JSON).</summary>
@@ -21,6 +23,7 @@ public static class SettingsNormalizer
         }
 
         s.Hotkey.TapThresholdMs = Math.Clamp(s.Hotkey.TapThresholdMs, MinTapThresholdMs, MaxTapThresholdMs);
+        s.SoundTheme = SoundThemes.Normalize(s.SoundTheme);
 
         var r = s.Recognition;
         r.GeminiModel = OrDefault(r.GeminiModel, RecognitionSettings.DefaultGeminiModel);

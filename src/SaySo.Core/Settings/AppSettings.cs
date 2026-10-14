@@ -1,3 +1,5 @@
+using SaySo.Core.Audio;
+
 namespace SaySo.Core.Settings;
 
 /// <summary>Несекретные настройки (settings.json).</summary>
@@ -22,6 +24,9 @@ public sealed class AppSettings
     public string? MicrophoneDeviceName { get; set; }
 
     public bool SoundsEnabled { get; set; } = true;
+
+    /// <summary>Идентификатор звуковой темы (см. <see cref="SoundThemes"/>); неизвестный заменяется умолчанием.</summary>
+    public string SoundTheme { get; set; } = SoundThemes.DefaultId;
 
     public bool AutostartEnabled { get; set; } = true;
 
