@@ -72,7 +72,7 @@ jobs:
             Write-Host "Релиз $env:TAG уже есть — заменяю файлы и заметки."
             gh release upload $env:TAG @files --clobber --repo $env:GITHUB_REPOSITORY
             if ($LASTEXITCODE -ne 0) { throw "gh release upload завершился с кодом $LASTEXITCODE" }
-            gh release edit $env:TAG --title "SaySo ${env:VERSION}" --notes-file artifacts/release-notes.md --repo $env:GITHUB_REPOSITORY
+            gh release edit $env:TAG --title "SaySo ${env:VERSION}" --notes-file artifacts/release-notes.md --draft=false --repo $env:GITHUB_REPOSITORY
             if ($LASTEXITCODE -ne 0) { throw "gh release edit завершился с кодом $LASTEXITCODE" }
           }
           else {
