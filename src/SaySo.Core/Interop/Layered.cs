@@ -36,10 +36,6 @@ internal static unsafe partial class Native
         POINT* pptSrc, uint crKey, BLENDFUNCTION* pblend, uint flags);
 
     [LibraryImport("user32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    public static partial bool ShowWindow(nint hwnd, int command);
-
-    [LibraryImport("user32.dll")]
     public static partial nint MonitorFromWindow(nint hwnd, uint flags);
 
     [LibraryImport("user32.dll")]

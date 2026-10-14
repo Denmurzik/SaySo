@@ -1,15 +1,52 @@
 <Window
     x:Class="SaySo.Settings.MainWindow"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    Title="SaySo — настройки">
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
     <Window.SystemBackdrop>
         <MicaBackdrop />
     </Window.SystemBackdrop>
-    <NavigationView x:Name="Nav" PaneDisplayMode="Left" IsSettingsVisible="False" IsBackButtonVisible="Collapsed">
-        <NavigationView.MenuItems>
-            <NavigationViewItem Content="Общие" Tag="general" />
-        </NavigationView.MenuItems>
-        <TextBlock x:Name="Placeholder" Margin="24" Text="SaySo" />
-    </NavigationView>
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="48" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+        <Grid x:Name="AppTitleBar" Padding="16,0,0,0">
+            <TextBlock x:Name="AppTitleText" VerticalAlignment="Center" Style="{StaticResource CaptionTextBlockStyle}" />
+        </Grid>
+        <NavigationView
+            x:Name="Nav"
+            Grid.Row="1"
+            PaneDisplayMode="Left"
+            OpenPaneLength="220"
+            IsPaneOpen="True"
+            IsPaneToggleButtonVisible="False"
+            IsSettingsVisible="False"
+            IsBackButtonVisible="Collapsed"
+            SelectionChanged="OnNavigationChanged">
+            <NavigationView.MenuItems>
+                <NavigationViewItem Content="Общие" Tag="general">
+                    <NavigationViewItem.Icon><FontIcon Glyph="&#xE713;" /></NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem Content="Распознавание" Tag="recognition">
+                    <NavigationViewItem.Icon><FontIcon Glyph="&#xE774;" /></NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem Content="Словарь" Tag="dictionary">
+                    <NavigationViewItem.Icon><FontIcon Glyph="&#xE82D;" /></NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem Content="Микрофон" Tag="microphone">
+                    <NavigationViewItem.Icon><FontIcon Glyph="&#xE720;" /></NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem Content="История" Tag="history">
+                    <NavigationViewItem.Icon><FontIcon Glyph="&#xE81C;" /></NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem Content="О программе" Tag="about">
+                    <NavigationViewItem.Icon><FontIcon Glyph="&#xE946;" /></NavigationViewItem.Icon>
+                </NavigationViewItem>
+            </NavigationView.MenuItems>
+            <Grid>
+                <ContentControl x:Name="PageHost" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch" />
+                <InfoBar x:Name="SaveInfo" IsOpen="False" IsClosable="True" Severity="Error" VerticalAlignment="Bottom" Margin="32,0,32,16" />
+            </Grid>
+        </NavigationView>
+    </Grid>
 </Window>
