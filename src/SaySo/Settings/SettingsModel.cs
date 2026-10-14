@@ -10,7 +10,7 @@ namespace SaySo.Settings;
 internal sealed class SettingsModel
 {
     /// <summary>Текст для окна, когда файл настроек не удалось записать (занят антивирусом/другим процессом).</summary>
-    public const string SaveFailedMessage = "Не удалось сохранить — файл занят, попробуйте ещё раз.";
+    public const string SaveFailedMessage = "Не удалось сохранить: файл занят, попробуйте ещё раз.";
 
     private readonly SettingsStore _settingsStore;
     private readonly SecretStore _secretStore;

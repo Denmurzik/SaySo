@@ -13,7 +13,7 @@
         </Grid.RowDefinitions>
         <TextBlock Text="Словарь" Style="{StaticResource PageTitle}" />
         <TextBlock Grid.Row="1" Style="{StaticResource CardDescription}"
-                   Text="Имена, названия и термины, которые нужно распознавать точно (например, Kubernetes, SaySo, Иван Петров). По одному на строку. Лучше всего работает до 100 терминов, максимум — 1000." />
+                   Text="Имена, названия и термины, которые нужно распознавать точно (например, Kubernetes, SaySo, Иван Петров). По одному на строку. Лучше всего работает до 100 терминов, максимум 1000." />
         <InfoBar x:Name="Info" Grid.Row="2" IsOpen="False" IsClosable="True" />
         <TextBox x:Name="TermsBox" Grid.Row="3" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="320"
                  ScrollViewer.VerticalScrollBarVisibility="Auto" TextChanged="OnTermsChanged" />

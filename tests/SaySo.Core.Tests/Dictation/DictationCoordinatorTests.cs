@@ -487,9 +487,9 @@ public sealed class DictationCoordinatorTests : IDisposable
         _sources[0].Push(TestAudio.Speech(1000));
         await c.HandleAsync(HotkeyAction.StopRecording);
 
-        Assert.Equal("message:Error:Gemini и Groq недоступны — подробности в трее", _overlay.Calls[^1]);
+        Assert.Equal("message:Error:Gemini и Groq недоступны, подробности в трее", _overlay.Calls[^1]);
         Assert.Equal(TrayState.Error, _feedback.Tray[^1]);
-        Assert.Equal("Gemini: нет связи с сервером; Groq: недоступен в вашем регионе — проверьте VPN", _feedback.TrayDetails[^1]);
+        Assert.Equal("Gemini: нет связи с сервером; Groq: недоступен в вашем регионе, проверьте VPN", _feedback.TrayDetails[^1]);
     }
 
     [Fact]

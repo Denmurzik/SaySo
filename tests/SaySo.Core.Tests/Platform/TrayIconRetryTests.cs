@@ -120,7 +120,7 @@ public class TrayIconRetryTests
         Assert.False(icon.IsAdded);
         _exists = true;
 
-        icon.Set(2, "SaySo — запись…"); // смена состояния значка после исчерпания повторов
+        icon.Set(2, "SaySo: запись…"); // смена состояния значка после исчерпания повторов
 
         Assert.True(icon.IsAdded);
         icon.Set(1, "SaySo");
@@ -153,7 +153,7 @@ public class TrayIconRetryTests
         var icon = Create();
 
         icon.Set(1, "SaySo");
-        icon.Set(2, "SaySo — запись…");
+        icon.Set(2, "SaySo: запись…");
         icon.Set(1, "SaySo");
 
         Assert.Single(_timers);

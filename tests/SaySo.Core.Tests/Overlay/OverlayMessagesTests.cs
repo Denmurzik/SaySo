@@ -68,7 +68,7 @@ public class OverlayMessagesTests
     [InlineData(InsertOutcome.NoTarget, OverlayMessages.FocusNotRestored)]
     [InlineData(InsertOutcome.ClipboardUnavailable, OverlayMessages.ClipboardBusyRetry)]
     [InlineData(InsertOutcome.BlockedByElevation, "Админ-окно: текст в буфере, вставьте Ctrl+V")]
-    [InlineData(InsertOutcome.InputBlocked, "Не вставилось — текст в буфере, нажмите Ctrl+V")]
+    [InlineData(InsertOutcome.InputBlocked, "Не вставилось: текст в буфере, нажмите Ctrl+V")]
     [InlineData(InsertOutcome.Inserted, null)]
     public void MenuInsertOutcome_UsesItsOwnWordingWhereHistoryTextIsInvolved(InsertOutcome outcome, string? expected) =>
         Assert.Equal(expected, OverlayMessages.ForMenuInsertOutcome(outcome));
@@ -92,7 +92,7 @@ public class OverlayMessagesTests
 
     [Fact]
     public void StartFailed_IsOneVariant() =>
-        Assert.Equal("Не удалось начать запись — подробности в журнале", OverlayMessages.StartFailed);
+        Assert.Equal("Не удалось начать запись, подробности в журнале", OverlayMessages.StartFailed);
 
     [Theory]
     [InlineData(InsertOutcome.BlockedByElevation)]
@@ -141,8 +141,8 @@ public class OverlayMessagesTests
     {
         var text = OverlayMessages.BothFailed(EngineErrorKind.RegionBlocked, EngineErrorKind.Network);
 
-        Assert.Equal("Gemini и Groq недоступны — подробности в трее", text.Short);
-        Assert.Equal("Gemini: недоступен в вашем регионе — проверьте VPN; Groq: нет связи с сервером", text.Detail);
+        Assert.Equal("Gemini и Groq недоступны, подробности в трее", text.Short);
+        Assert.Equal("Gemini: недоступен в вашем регионе, проверьте VPN; Groq: нет связи с сервером", text.Detail);
     }
 
     [Fact]
@@ -156,5 +156,5 @@ public class OverlayMessagesTests
 
     [Fact]
     public void FallbackUsed_NamesTheReason() =>
-        Assert.Equal("Резерв Groq — Gemini: лимит исчерпан", OverlayMessages.FallbackUsed(EngineErrorKind.QuotaExceeded));
+        Assert.Equal("Резерв Groq (Gemini: лимит исчерпан)", OverlayMessages.FallbackUsed(EngineErrorKind.QuotaExceeded));
 }

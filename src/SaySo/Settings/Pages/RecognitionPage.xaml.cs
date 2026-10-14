@@ -336,7 +336,7 @@ public sealed partial class RecognitionPage : UserControl
             var groq = _model.Secrets.GroqApiKey;
             if (string.IsNullOrWhiteSpace(groq))
             {
-                Show(GroqInfo, "Ключ Groq не задан — резерв не сработает.", InfoBarSeverity.Warning);
+                Show(GroqInfo, "Ключ Groq не задан, резерв не сработает.", InfoBarSeverity.Warning);
             }
             else
             {
@@ -357,7 +357,7 @@ public sealed partial class RecognitionPage : UserControl
             // Сообщение исключения не содержит ключей (они передаются заголовком, а не в адресе) и уходит только в журнал:
             // в интерфейсе оно было бы англоязычным или ключом ресурса (UseSystemResourceKeys).
             Log.Error("Проверка ключей", ex);
-            Show(GeminiInfo, "Не удалось выполнить проверку — подробности в журнале", InfoBarSeverity.Error);
+            Show(GeminiInfo, "Не удалось выполнить проверку, подробности в журнале", InfoBarSeverity.Error);
         }
         finally
         {

@@ -5,7 +5,14 @@ public static class TrayTooltip
 {
     public const int MaxLength = 127;
 
-    private const string Prefix = "SaySo — ";
+    private const string Prefix = "SaySo: ";
+
+    public const string Paused = Prefix + "приостановлено";
+
+    public const string Recording = Prefix + "запись…";
+
+    /// <summary>Подсказка в покое: как начать диктовку (<paramref name="hotkey"/> — из <c>HotkeyFormatter</c>).</summary>
+    public static string Idle(string hotkey) => Prefix + "удерживайте " + hotkey;
 
     /// <summary>Подсказка для состояния «ошибка»: полный текст последней ошибки (<paramref name="detail"/> — из <c>FailureText.Detail</c>).</summary>
     public static string ForError(string? detail) =>

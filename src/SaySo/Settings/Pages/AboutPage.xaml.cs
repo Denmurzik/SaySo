@@ -55,7 +55,7 @@ public sealed partial class AboutPage : UserControl
         catch (Exception ex)
         {
             Log.Error("AboutPage.CheckUpdates", ex);
-            SetBusy(false, "Не удалось проверить обновления — подробности в журнале");
+            SetBusy(false, "Не удалось проверить обновления, подробности в журнале");
         }
     }
 
@@ -113,7 +113,7 @@ public sealed partial class AboutPage : UserControl
         {
             // Демон ставит известную ему версию (иначе сначала проверяет), скачивает и проверяет Setup, дожидается конца
             // диктовки; перезапустит SaySo сам Setup.
-            SetBusy(false, "SaySo скачивает обновление и перезапустится — это займёт около минуты");
+            SetBusy(false, "SaySo скачивает обновление и перезапустится. Это займёт около минуты");
             return;
         }
 
@@ -135,7 +135,7 @@ public sealed partial class AboutPage : UserControl
         catch (Exception ex)
         {
             Log.Error("AboutPage.InstallUpdate", ex);
-            ShowInstallMessage("Не удалось обновить — подробности в журнале", isError: true);
+            ShowInstallMessage("Не удалось обновить, подробности в журнале", isError: true);
         }
         finally
         {

@@ -25,14 +25,14 @@ public static class OverlayMessages
     /// <summary>Допустимая ширина текста: плашка рисует до 400 px, остальное — запас на другие шрифты и DPI.</summary>
     public const int MaxTextWidthPx = 380;
 
-    public const string StartFailed = "Не удалось начать запись — подробности в журнале";
-    public const string DictationError = "Ошибка диктовки — подробности в журнале";
+    public const string StartFailed = "Не удалось начать запись, подробности в журнале";
+    public const string DictationError = "Ошибка диктовки, подробности в журнале";
 
     /// <summary>«Скопировать последнее» / «Вставить последнее» при занятом буфере: текст и так в истории, поможет повтор.</summary>
-    public const string ClipboardBusyRetry = "Буфер обмена занят — попробуйте ещё раз";
+    public const string ClipboardBusyRetry = "Буфер обмена занят, попробуйте ещё раз";
 
     /// <summary>«Вставить последнее»: окно, куда вставляли, не получило фокус (или закрыто).</summary>
-    public const string FocusNotRestored = "Не удалось вернуться в окно — текст в истории";
+    public const string FocusNotRestored = "Не удалось вернуться в окно, текст в истории";
 
     /// <summary>Запись закончилась, а текста нет: тишина, слишком короткая реплика или пустой ответ движка. Не ошибка (тон Info).</summary>
     public const string NoSpeech = "Речь не распознана";
@@ -48,12 +48,12 @@ public static class OverlayMessages
     public const string UpdateCheckFailed = "Не удалось проверить обновления";
 
     private const string NoFallbackSuffix = "; резерв не настроен";
-    private const string BothUnavailable = "Gemini и Groq недоступны — подробности в трее";
+    private const string BothUnavailable = "Gemini и Groq недоступны, подробности в трее";
 
     public static FailureText Microphone(MicrophoneErrorKind kind, int nativeError) => kind switch
     {
         MicrophoneErrorKind.AccessDenied => new FailureText(
-            "Нет доступа к микрофону — см. Параметры",
+            "Нет доступа к микрофону, см. Параметры",
             "Нет доступа к микрофону: Параметры → Конфиденциальность и защита → Микрофон → разрешите доступ классическим приложениям"),
         MicrophoneErrorKind.NotFound => FailureText.Same("Микрофон не найден"),
         MicrophoneErrorKind.DeviceLost => FailureText.Same("Микрофон отключился во время записи"),
@@ -65,9 +65,9 @@ public static class OverlayMessages
     public static string? ForInsertOutcome(InsertOutcome outcome) => outcome switch
     {
         InsertOutcome.BlockedByElevation => "Админ-окно: текст в буфере, вставьте Ctrl+V",
-        InsertOutcome.ClipboardUnavailable => "Буфер обмена занят — текст в истории",
-        InsertOutcome.NoTarget => "Нет активного окна — текст в истории",
-        InsertOutcome.InputBlocked => "Не вставилось — текст в буфере, нажмите Ctrl+V",
+        InsertOutcome.ClipboardUnavailable => "Буфер обмена занят, текст в истории",
+        InsertOutcome.NoTarget => "Нет активного окна, текст в истории",
+        InsertOutcome.InputBlocked => "Не вставилось: текст в буфере, нажмите Ctrl+V",
         _ => null,
     };
 
@@ -84,7 +84,7 @@ public static class OverlayMessages
 
     /// <summary>Текст вставил резерв: сообщаем, почему не основной движок.</summary>
     public static string FallbackUsed(EngineErrorKind primaryError) =>
-        "Резерв Groq — " + ErrorMessages.DescribeShort(primaryError, "Gemini");
+        "Резерв Groq (" + ErrorMessages.DescribeShort(primaryError, "Gemini") + ")";
 
     /// <summary>Основной движок не сработал, а резерв выключен или без ключа.</summary>
     public static FailureText NoFallback(EngineErrorKind primaryError) =>

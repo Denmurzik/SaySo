@@ -16,7 +16,7 @@
                     <StackPanel VerticalAlignment="Center">
                         <TextBlock Text="Горячая клавиша" Style="{StaticResource CardTitle}" />
                         <TextBlock Style="{StaticResource CardDescription}"
-                                   Text="Удерживайте — идёт запись, отпустите — текст вставится. Короткое нажатие включает режим «руки свободны», повторное — завершает. Esc — отмена." />
+                                   Text="Пока клавиша удерживается, идёт запись; отпустите, и текст вставится. Короткое нажатие включает режим «руки свободны», повторное завершает запись. Отмена: Esc." />
                     </StackPanel>
                     <Button x:Name="HotkeyButton" Grid.Column="1" MinWidth="180" VerticalAlignment="Center" Click="OnHotkeyClick" />
                 </Grid>
@@ -76,7 +76,7 @@
                     <StackPanel VerticalAlignment="Center">
                         <TextBlock Text="Проверять обновления автоматически" Style="{StaticResource CardTitle}" />
                         <TextBlock Style="{StaticResource CardDescription}"
-                                   Text="Раз в сутки SaySo спрашивает у GitHub, нет ли новой версии. Ключи и тексты диктовок не отправляются. Ручная проверка — на странице «О программе»." />
+                                   Text="Раз в сутки SaySo спрашивает у GitHub, нет ли новой версии. Ключи и тексты диктовок не отправляются. Ручная проверка на странице «О программе»." />
                     </StackPanel>
                     <ToggleSwitch x:Name="UpdatesSwitch" Grid.Column="1" OnContent="Вкл" OffContent="Выкл" Toggled="OnUpdatesToggled" />
                 </Grid>

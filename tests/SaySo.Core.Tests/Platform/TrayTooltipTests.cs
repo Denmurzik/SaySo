@@ -6,7 +6,7 @@ namespace SaySo.Core.Tests.Platform;
 public class TrayTooltipTests
 {
     [Fact]
-    public void ShortText_IsUnchanged() => Assert.Equal("SaySo — запись…", TrayTooltip.Fit("SaySo — запись…"));
+    public void ShortText_IsUnchanged() => Assert.Equal("SaySo: запись…", TrayTooltip.Fit("SaySo: запись…"));
 
     [Fact]
     public void ExactlyMaxLength_IsUnchanged()
@@ -49,11 +49,11 @@ public class TrayTooltipTests
 
     [Fact]
     public void ForError_WithoutDetail_UsesGenericText() =>
-        Assert.Equal("SaySo — последняя диктовка не удалась", TrayTooltip.ForError(null));
+        Assert.Equal("SaySo: последняя диктовка не удалась", TrayTooltip.ForError(null));
 
     [Fact]
     public void ForError_ShowsFullDetail() =>
-        Assert.Equal("SaySo — Gemini: нет связи с сервером; Groq: ключ API недействителен",
+        Assert.Equal("SaySo: Gemini: нет связи с сервером; Groq: ключ API недействителен",
             TrayTooltip.ForError("Gemini: нет связи с сервером; Groq: ключ API недействителен"));
 
     [Fact]

@@ -9,7 +9,7 @@ public static class HotkeyValidator
     {
         if (keys.Count == 0)
         {
-            return "Комбинация пуста — нажмите клавишу или сочетание.";
+            return "Комбинация пуста. Нажмите клавишу или сочетание.";
         }
 
         if (keys.Contains(VirtualKeys.Escape))
@@ -34,7 +34,7 @@ public static class HotkeyValidator
         }
 
         return "Такая комбинация будет срабатывать при обычном наборе текста. " +
-               "Используйте Ctrl, Alt или Win, либо отдельную клавишу вроде правого Ctrl, Caps Lock или F13–F24.";
+               "Используйте Ctrl, Alt или Win, либо отдельную клавишу вроде правого Ctrl, Caps Lock или клавиш от F13 до F24.";
     }
 
     // Отдельные клавиши, которые не участвуют в наборе текста.
