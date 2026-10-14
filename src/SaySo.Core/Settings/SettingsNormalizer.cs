@@ -6,6 +6,7 @@ public static class SettingsNormalizer
     public const int MinTapThresholdMs = 150;
     public const int MaxTapThresholdMs = 1000;
     public const int MaxVocabularyTerms = 1000;
+    public const int MaxDeviceNameLength = 256;
 
     public static AppSettings Normalize(AppSettings s)
     {
@@ -35,8 +36,15 @@ public static class SettingsNormalizer
             s.MicrophoneDeviceId = null;
         }
 
+        // Имя без идентификатора бессмысленно: «по умолчанию» очищает оба значения.
+        s.MicrophoneDeviceName = s.MicrophoneDeviceId is null || string.IsNullOrWhiteSpace(s.MicrophoneDeviceName)
+            ? null
+            : Truncate(s.MicrophoneDeviceName.Trim(), MaxDeviceNameLength);
+
         return s;
     }
+
+    private static string Truncate(string value, int max) => value.Length <= max ? value : value[..max];
 
     private static string OrDefault(string? value, string fallback) =>
         string.IsNullOrWhiteSpace(value) ? fallback : value.Trim();

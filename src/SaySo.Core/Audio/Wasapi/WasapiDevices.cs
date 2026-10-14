@@ -17,8 +17,21 @@ public static unsafe class WasapiDevices
     /// <summary>Активные устройства записи с понятными именами.</summary>
     public static IReadOnlyList<AudioDevice> ListCaptureDevices() => ComThread.Run(() =>
     {
-        var result = new List<AudioDevice>();
         var enumerator = CreateEnumerator();
+        try
+        {
+            return (IReadOnlyList<AudioDevice>)ListActive(enumerator);
+        }
+        finally
+        {
+            enumerator->Release();
+        }
+    });
+
+    /// <summary>Активные устройства записи; вызывается из потока с уже инициализированным COM.</summary>
+    internal static List<AudioDevice> ListActive(IMMDeviceEnumerator* enumerator)
+    {
+        var result = new List<AudioDevice>();
         IMMDeviceCollection* collection = null;
         try
         {
@@ -49,12 +62,10 @@ public static unsafe class WasapiDevices
             {
                 collection->Release();
             }
-
-            enumerator->Release();
         }
 
-        return (IReadOnlyList<AudioDevice>)result;
-    });
+        return result;
+    }
 
     internal static IMMDeviceEnumerator* CreateEnumerator()
     {
