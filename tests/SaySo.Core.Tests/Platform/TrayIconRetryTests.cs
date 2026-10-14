@@ -8,6 +8,7 @@ public class TrayIconRetryTests
     private readonly List<uint> _calls = [];
     private readonly List<(TimeSpan Delay, Action Action, bool Disposed)> _timers = [];
     private int _addFailures;
+    private bool _exists; // значок реально есть в трее (модель Проводника)
 
     private unsafe TrayIcon Create(bool withTimer = true) => new(0, 0x8000,
         withTimer ? (delay, action) =>
@@ -19,7 +20,31 @@ public class TrayIconRetryTests
         (message, _) =>
         {
             _calls.Add(message);
-            return message != Native.NIM_ADD || _addFailures-- <= 0;
+            switch (message)
+            {
+                case Native.NIM_ADD:
+                    if (_exists)
+                    {
+                        return false; // дубликат
+                    }
+
+                    if (_addFailures > 0)
+                    {
+                        _addFailures--;
+                        return false;
+                    }
+
+                    _exists = true;
+                    return true;
+                case Native.NIM_MODIFY:
+                    return _exists;
+                case Native.NIM_DELETE:
+                    var was = _exists;
+                    _exists = false;
+                    return was;
+                default:
+                    return true;
+            }
         });
 
     private void FireLastTimer()
@@ -28,6 +53,8 @@ public class TrayIconRetryTests
         Assert.False(disposed);
         action();
     }
+
+    private int Count(uint message) => _calls.Count(c => c == message);
 
     [Fact]
     public void AddFails_RetriesAfterTimer_UntilAdded()
@@ -47,6 +74,57 @@ public class TrayIconRetryTests
         Assert.True(icon.IsAdded);
         Assert.Equal(2, _timers.Count); // дальше таймеров нет
         Assert.Contains(Native.NIM_SETVERSION, _calls);
+    }
+
+    [Fact]
+    public void FirstAttempt_IsPlainAdd_WithoutModifyProbe()
+    {
+        _addFailures = 1;
+        var icon = Create();
+
+        icon.Set(1, "SaySo");
+
+        Assert.Equal(0, Count(Native.NIM_MODIFY)); // не удваиваем возможную блокировку на занятом Проводнике
+    }
+
+    [Fact]
+    public void LateAddThatActuallyWentThrough_IsAdoptedByModify_NotLostAsDuplicate()
+    {
+        _addFailures = 1;
+        var icon = Create();
+        icon.Set(1, "SaySo");
+        Assert.False(icon.IsAdded);
+        _exists = true; // Проводник обработал запоздавший NIM_ADD уже после того, как он вернул FALSE
+
+        FireLastTimer();
+
+        Assert.True(icon.IsAdded);
+        Assert.Equal(1, Count(Native.NIM_ADD)); // повторного NIM_ADD (дубликата) не было
+        Assert.Contains(Native.NIM_SETVERSION, _calls);
+        Assert.Single(_timers); // новых повторов нет
+    }
+
+    [Fact]
+    public void LateAdd_AfterRetriesExhausted_NextSetStillAdoptsIcon()
+    {
+        _addFailures = int.MaxValue;
+        var icon = Create();
+        icon.Set(1, "SaySo");
+        var fired = 0;
+        while (_timers.Count > fired)
+        {
+            fired++;
+            _timers[fired - 1].Action();
+        }
+
+        Assert.False(icon.IsAdded);
+        _exists = true;
+
+        icon.Set(2, "SaySo — запись…"); // смена состояния значка после исчерпания повторов
+
+        Assert.True(icon.IsAdded);
+        icon.Set(1, "SaySo");
+        Assert.True(Count(Native.NIM_MODIFY) >= 2); // дальше обычные NIM_MODIFY, а не вечные NIM_ADD
     }
 
     [Fact]
@@ -113,11 +191,25 @@ public class TrayIconRetryTests
         var stale = _timers[0].Action;
         icon.Recreate(); // например, TaskbarCreated добавил значок раньше таймера
         Assert.True(icon.IsAdded);
-        var addsBefore = _calls.Count(c => c == Native.NIM_ADD);
+        var addsBefore = Count(Native.NIM_ADD);
 
         stale();
 
-        Assert.Equal(addsBefore, _calls.Count(c => c == Native.NIM_ADD));
+        Assert.Equal(addsBefore, Count(Native.NIM_ADD));
+    }
+
+    [Fact]
+    public void Recreate_AfterFailedAdd_DeletesThenAddsWithoutModifyProbe()
+    {
+        _addFailures = 1;
+        var icon = Create();
+        icon.Set(1, "SaySo");
+        _calls.Clear();
+
+        icon.Recreate();
+
+        Assert.Equal([Native.NIM_DELETE, Native.NIM_ADD, Native.NIM_SETVERSION], _calls);
+        Assert.True(icon.IsAdded);
     }
 
     [Fact]

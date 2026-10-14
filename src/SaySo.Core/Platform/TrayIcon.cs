@@ -25,6 +25,7 @@ internal sealed unsafe class TrayIcon(
     private readonly TrayNotify _notify = notify ?? ((message, data) => Native.Shell_NotifyIconW(message, data));
     private bool _added;
     private bool _configured;
+    private bool _addFailed; // был неудачный NIM_ADD: значок мог появиться позже
     private nint _icon;
     private string _tooltip = "SaySo";
     private int _retries;
@@ -45,8 +46,13 @@ internal sealed unsafe class TrayIcon(
             return;
         }
 
-        if (!_notify(Native.NIM_ADD, &data))
+        // После неудачного NIM_ADD значок мог всё же появиться (FALSE по таймауту, а Проводник обработал запрос позже): тогда
+        // повторный NIM_ADD вернул бы FALSE как дубликат, и _added навсегда остался бы false. Поэтому сначала пробуем изменить
+        // существующий значок; если его нет, NIM_MODIFY просто вернёт FALSE.
+        var exists = _addFailed && _notify(Native.NIM_MODIFY, &data);
+        if (!exists && !_notify(Native.NIM_ADD, &data))
         {
+            _addFailed = true;
             Log.Info("Shell_NotifyIcon(NIM_ADD) не удался — повтор позже и после TaskbarCreated");
             ScheduleRetry();
             return;
@@ -55,6 +61,7 @@ internal sealed unsafe class TrayIcon(
         data.uVersion = Native.NOTIFYICON_VERSION_4;
         _notify(Native.NIM_SETVERSION, &data);
         _added = true;
+        _addFailed = false;
         StopRetries();
     }
 
@@ -71,6 +78,7 @@ internal sealed unsafe class TrayIcon(
         var data = Build();
         _notify(Native.NIM_DELETE, &data);
         _added = false;
+        _addFailed = false; // значок только что удалён: NIM_ADD, без попытки «изменить существующий»
         StopRetries(); // свежий перезапуск Проводника — свежий запас повторов
         Set(_icon, _tooltip);
     }
