@@ -27,13 +27,14 @@ public sealed partial class MainWindow : Window
         // Меньше этого закреплённая панель и карточки не помещаются (контент обрезается).
         WindowMinSize.Apply(hwnd, MinWidthDip, MinHeightDip);
         Closed += (_, _) => ShutDownSettings();
-
         Nav.SelectedItem = Nav.MenuItems[0];
     }
 
     private void OnNavigationChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
     {
         var tag = (args.SelectedItem as NavigationViewItem)?.Tag as string;
+        // Правки словаря попадают в модель до Flush: если файл занят, предупреждение ниже покажет и их.
+        (PageHost.Content as DictionaryPage)?.SaveIfChanged();
         HotkeyCapture.CancelActive(); // запись горячей клавиши принадлежит странице, которую сейчас заменят
         // Не записали (файл занят) — предупреждаем здесь: у страницы, которую заменяем, уже не спросить.
         SaveInfo.Message = SettingsModel.SaveFailedMessage;
@@ -53,6 +54,9 @@ public sealed partial class MainWindow : Window
     // Завершение окна — отдельным блоком, чтобы задача 18 добавила сюда свои шаги (остановка теста микрофона) без конфликтов.
     private void ShutDownSettings()
     {
+        // Unloaded у страниц при закрытии окна не гарантирован — их шаги выполняем явно и первыми.
+        (PageHost.Content as MicrophonePage)?.Shutdown(); // остановить проверку микрофона
+        (PageHost.Content as DictionaryPage)?.SaveIfChanged(); // правки словаря — в модель, дальше их запишет Flush
         HotkeyCapture.CancelActive();
         IpcClient.Send(IpcProtocol.ResumeHotkey); // идемпотентно: если запись шла, демон не должен остаться без горячей клавиши
         // Ключи и настройки, введённые, но ещё не записанные (потеря фокуса не наступила). Окно закрывается — только журнал.

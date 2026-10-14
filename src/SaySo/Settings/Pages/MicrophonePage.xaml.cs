@@ -82,15 +82,16 @@ public sealed partial class MicrophonePage : UserControl
         }
 
         _model.Settings.MicrophoneDeviceId = deviceId;
-        if (!_model.SaveSettings())
-        {
-            ShowMessage(SettingsModel.SaveFailedMessage, privacyLink: false);
-        }
-
+        var saved = _model.SaveSettings();
         if (TestButton.IsChecked == true)
         {
             StopTest();
-            _ = StartTestAsync();
+            _ = StartTestAsync(); // закрывает InfoBar — сообщение об ошибке сохранения показываем после
+        }
+
+        if (!saved)
+        {
+            ShowMessage(SettingsModel.SaveFailedMessage, privacyLink: false);
         }
     }
 
