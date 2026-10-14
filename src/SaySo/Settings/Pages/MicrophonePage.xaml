@@ -19,7 +19,7 @@
                     </Grid.ColumnDefinitions>
                     <StackPanel VerticalAlignment="Center">
                         <TextBlock Text="Устройство записи" Style="{StaticResource CardTitle}" />
-                        <TextBlock Style="{StaticResource CardDescription}" Text="Выбранный микрофон используется всегда, когда подключён; иначе используется микрофон Windows по умолчанию." />
+                        <TextBlock Style="{StaticResource CardDescription}" Text="Выбранный микрофон используется всегда, когда подключён; иначе берётся микрофон Windows по умолчанию." />
                     </StackPanel>
                     <ComboBox x:Name="DevicesBox" Grid.Column="1" MinWidth="280" VerticalAlignment="Center" PlaceholderText="Загрузка…" SelectionChanged="OnDeviceChanged" />
                 </Grid>

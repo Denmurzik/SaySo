@@ -50,7 +50,7 @@
                 </StackPanel>
             </Border>
 
-            <TextBlock Text="Резервный движок: Groq" Style="{StaticResource BodyStrongTextBlockStyle}" Margin="0,16,0,0" />
+            <TextBlock Text="Резервный движок Groq (если Gemini недоступен)" Style="{StaticResource BodyStrongTextBlockStyle}" Margin="0,16,0,0" />
             <Border Style="{StaticResource SettingsCard}">
                 <Grid ColumnSpacing="16">
                     <Grid.ColumnDefinitions>

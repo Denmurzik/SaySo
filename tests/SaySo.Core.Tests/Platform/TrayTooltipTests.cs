@@ -53,8 +53,18 @@ public class TrayTooltipTests
 
     [Fact]
     public void ForError_ShowsFullDetail() =>
-        Assert.Equal("SaySo: Gemini: нет связи с сервером; Groq: ключ API недействителен",
+        Assert.Equal("SaySo (Gemini: нет связи с сервером; Groq: ключ API недействителен)",
             TrayTooltip.ForError("Gemini: нет связи с сервером; Groq: ключ API недействителен"));
+
+    [Fact]
+    public void ForError_LongDetail_IsCutInsideParentheses_AndStaysClosed()
+    {
+        var tooltip = TrayTooltip.ForError(string.Join(' ', Enumerable.Repeat("слово", 40)));
+
+        Assert.True(tooltip.Length <= TrayTooltip.MaxLength);
+        Assert.StartsWith("SaySo (", tooltip);
+        Assert.EndsWith("слово…)", tooltip);
+    }
 
     [Fact]
     public void EveryErrorDetail_FitsTooltipWithoutTruncation()

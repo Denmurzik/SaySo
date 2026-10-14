@@ -31,6 +31,10 @@ public partial class NoDashSourceScanTests
 
     private static bool HasDash(string text) => text.AsSpan().IndexOfAny('—', '–') >= 0;
 
+    /// <summary>Оператор, начинающийся с вызова журнала: его строки не интерфейс.</summary>
+    [GeneratedRegex(@"\b(?:Platform)?Log\.(?:Info|Warn|Error|Debug)\s*\(")]
+    private static partial Regex LogCall();
+
     [GeneratedRegex(@"<!--.*?-->", RegexOptions.Singleline)]
     private static partial Regex XmlComment();
 
@@ -50,12 +54,14 @@ public partial class NoDashSourceScanTests
 
     /// <summary>
     /// Строковые литералы C#, где есть тире: комментарии (//, /* */) пропускаются, обычные, дословные, интерполированные,
-    /// «сырые» строки и символьные литералы разбираются целиком.
+    /// «сырые» строки и символьные литералы разбираются целиком. Литералы в операторе, который начинается с вызова журнала
+    /// (<c>Log.Info(...)</c>, <c>PlatformLog.Error(...)</c>), пропускаются: журнал не интерфейс.
     /// </summary>
     internal static IEnumerable<string> CSharpLiteralsWithDash(string code)
     {
         var line = 1;
         var i = 0;
+        var statementStart = 0; // начало текущего оператора: после «;», «{» или «}» вне литералов
         while (i < code.Length)
         {
             var c = code[i];
@@ -78,6 +84,10 @@ public partial class NoDashSourceScanTests
                 line += code.AsSpan(i, end - i).Count('\n');
                 i = end;
             }
+            else if (c == ';' || c == '{' || c == '}')
+            {
+                statementStart = ++i;
+            }
             else if (c == '\'')
             {
                 var start = ++i;
@@ -88,7 +98,7 @@ public partial class NoDashSourceScanTests
 
                 var literal = code[start..Math.Min(i, code.Length)];
                 i++;
-                if (HasDash(literal))
+                if (HasDash(literal) && !LogCall().IsMatch(code.AsSpan(statementStart, start - statementStart)))
                 {
                     yield return $"{line}: '{literal}'";
                 }
@@ -104,7 +114,7 @@ public partial class NoDashSourceScanTests
                     continue;
                 }
 
-                if (HasDash(literal))
+                if (HasDash(literal) && !LogCall().IsMatch(code.AsSpan(statementStart, start - statementStart)))
                 {
                     yield return $"{startLine}: {literal.Trim()}";
                 }
@@ -247,14 +257,28 @@ public partial class NoDashSourceScanTests
         Assert.Empty(found);
     }
 
+    private static List<string> DashLiteralsIn(IEnumerable<string> files) =>
+        files.SelectMany(f => CSharpLiteralsWithDash(File.ReadAllText(f)).Select(l => $"{Path.GetRelativePath(Root, f)}:{l}")).ToList();
+
     [Fact]
     public void SettingsCodeBehind_StringLiterals_HaveNoDashes()
     {
         var files = SourceFiles(Path.Combine("src", "SaySo", "Settings"), "*.cs").ToList();
-        var found = files.SelectMany(f => CSharpLiteralsWithDash(File.ReadAllText(f)).Select(l => $"{Path.GetRelativePath(Root, f)}:{l}")).ToList();
 
         Assert.True(files.Count >= 10, $"найдено слишком мало файлов окна настроек: {files.Count}");
-        Assert.Empty(found);
+        Assert.Empty(DashLiteralsIn(files));
+    }
+
+    [Fact]
+    public void DaemonAndAppCode_StringLiterals_HaveNoDashes_OutsideLogCalls()
+    {
+        // Демон: меню и подсказки трея, уведомления, плашка; корень проекта: Program.cs и App.xaml.cs.
+        var daemon = SourceFiles(Path.Combine("src", "SaySo", "Daemon"), "*.cs").ToList();
+        var root = Directory.EnumerateFiles(Path.Combine(Root, "src", "SaySo"), "*.cs", SearchOption.TopDirectoryOnly).ToList();
+
+        Assert.True(daemon.Count >= 5, $"найдено слишком мало файлов демона: {daemon.Count}");
+        Assert.True(root.Count >= 2, $"найдено слишком мало файлов корня проекта: {root.Count}");
+        Assert.Empty(DashLiteralsIn(daemon.Concat(root)));
     }
 
     [Fact]
@@ -293,16 +317,22 @@ public partial class NoDashSourceScanTests
             var e = '—';
             var f = "экранированная \" — плохо";
             var g = "без тире";
+            Log.Info("журнал — можно");
+            PlatformLog.Error($"журнал – можно {x}");
+            Log.Info($"многострочный журнал"
+                     + " — можно");
+            var h = "после журнала — плохо";
             """;
 
         var found = CSharpLiteralsWithDash(Code).ToList();
 
-        Assert.Equal(5, found.Count);
+        Assert.Equal(6, found.Count);
         Assert.StartsWith("2:", found[0]);
         Assert.StartsWith("4:", found[1]);
         Assert.StartsWith("5:", found[2]);
         Assert.StartsWith("7:", found[3]); // символьный литерал: тоже строка интерфейса, если окажется в тексте
         Assert.StartsWith("8:", found[4]);
+        Assert.StartsWith("14:", found[5]); // оператор после вызова журнала снова проверяется
     }
 
     [Fact]

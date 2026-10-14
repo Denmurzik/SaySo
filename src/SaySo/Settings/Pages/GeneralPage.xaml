@@ -76,7 +76,7 @@
                     <StackPanel VerticalAlignment="Center">
                         <TextBlock Text="Проверять обновления автоматически" Style="{StaticResource CardTitle}" />
                         <TextBlock Style="{StaticResource CardDescription}"
-                                   Text="Раз в сутки SaySo спрашивает у GitHub, нет ли новой версии. Ключи и тексты диктовок не отправляются. Ручная проверка на странице «О программе»." />
+                                   Text="Раз в сутки SaySo спрашивает у GitHub, нет ли новой версии. Ключи и тексты диктовок не отправляются. Проверить вручную можно на странице «О программе»." />
                     </StackPanel>
                     <ToggleSwitch x:Name="UpdatesSwitch" Grid.Column="1" OnContent="Вкл" OffContent="Выкл" Toggled="OnUpdatesToggled" />
                 </Grid>

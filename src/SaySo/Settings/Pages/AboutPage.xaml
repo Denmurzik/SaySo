@@ -7,7 +7,7 @@
             <TextBlock Text="SaySo" Style="{StaticResource PageTitle}" />
             <TextBlock x:Name="VersionText" Style="{StaticResource CardDescription}" />
             <TextBlock TextWrapping="Wrap"
-                       Text="Зажмите клавишу, говорите, отпустите: очищенный текст появится в активном окне. Распознавание: Gemini 3.5 Transcribe (режим SMART), запасной движок Groq Whisper." />
+                       Text="Зажмите клавишу, говорите, отпустите: очищенный текст появится в активном окне. Распознавание: Gemini 3.5 Transcribe (режим SMART), резервный движок Groq Whisper." />
 
             <Border Style="{StaticResource SettingsCard}">
                 <StackPanel Spacing="8">
