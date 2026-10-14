@@ -30,8 +30,11 @@ try
         case "render-demo":
             RenderDemo(opts.Get("out") ?? "docs/assets/overlay-demo.png");
             return 0;
+        case "render-states":
+            RenderStates(opts.Get("out-dir") ?? "docs/assets");
+            return 0;
         default:
-            Console.WriteLine("Команды: render-demo [--out F] | gemini --wav F [--realtime] [--mode smart|verbatim] [--lang ru-RU] [--vocab \"a,b\"] [--model M] [--query-key] | session --wav F [--realtime] | groq --wav F [--no-cleanup] | errors");
+            Console.WriteLine("Команды: render-demo [--out F] | render-states [--out-dir D] | gemini --wav F [--realtime] [--mode smart|verbatim] [--lang ru-RU] [--vocab \"a,b\"] [--model M] [--query-key] | session --wav F [--realtime] | groq --wav F [--no-cleanup] | errors");
             return 2;
     }
 }
@@ -229,6 +232,35 @@ static void RenderDemo(string path)
     Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
     ApngWriter.Write(path, w, h, frames, 33);
     Console.WriteLine($"OK {path} ({w}×{h}, кадров: {frames.Count})");
+}
+
+/// <summary>Неподвижные состояния оверлея (запись, обработка, ошибка, сообщение) — для README; тот же рендерер и те же тексты, что у демона.</summary>
+static void RenderStates(string dir)
+{
+    const float scale = 2f;
+    Directory.CreateDirectory(Path.GetFullPath(dir));
+
+    OverlayFrame Message(string text, OverlayTone tone) => new(
+        OverlayMode.Message, [], 0, tone,
+        GdiTextMask.RenderText(text, (int)MathF.Round(13 * scale), (int)MathF.Round(400 * scale))); // как в OverlayWindow.ShowMessage
+
+    var frames = new (string File, OverlayFrame Frame)[]
+    {
+        ("overlay-recording.png", new OverlayFrame(OverlayMode.Recording, [0.18f, 0.42f, 0.78f, 1f, 0.66f, 0.34f, 0.2f], 0)),
+        ("overlay-processing.png", new OverlayFrame(OverlayMode.Processing, [], 400)),
+        ("overlay-error.png", Message(OverlayMessages.NoFallback(EngineErrorKind.QuotaExceeded).Short, OverlayTone.Error)),
+        ("overlay-info.png", Message(OverlayMessages.FallbackUsed(EngineErrorKind.QuotaExceeded), OverlayTone.Info)),
+    };
+
+    foreach (var (file, frame) in frames)
+    {
+        var (w, h) = OverlayRenderer.Measure(frame, scale);
+        var px = new uint[w * h];
+        OverlayRenderer.Render(px, w, h, frame, scale);
+        var path = Path.Combine(dir, file);
+        ApngWriter.Write(path, w, h, [px], 33);
+        Console.WriteLine($"OK {path} ({w}×{h})");
+    }
 }
 
 /// <summary>Простейший разбор аргументов: команда + --ключ [значение].</summary>
