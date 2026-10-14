@@ -52,6 +52,9 @@ public sealed class SettingsDictationEngines(
         }
     }
 
+    /// <summary>Снять паузы ключей Gemini (квота, недействительный ключ): пользователь изменил настройки.</summary>
+    public void ResetKeyPauses() => _keys.ResetPauses();
+
     /// <summary>HttpClient без простаивающих соединений дольше 30 с (в фоне — ноль сокетов).</summary>
     public static HttpClient CreateHttpClient() => new(new SocketsHttpHandler
     {
@@ -67,7 +70,7 @@ public sealed class SettingsDictationEngines(
     {
         var s = settings();
         var r = s.Recognition;
-        return new GeminiConnection(new Uri(r.GeminiEndpoint), key,
+        return GeminiConnection.Create(r.GeminiEndpoint, key,
             new GeminiSessionOptions(r.GeminiModel, r.Mode, r.LanguageCodes, s.Vocabulary));
     }
 }

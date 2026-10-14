@@ -10,6 +10,9 @@ public enum EngineErrorKind
     Timeout,
     Protocol,
     NotConfigured,
+
+    /// <summary>Адрес сервера в настройках не является корректным URL.</summary>
+    InvalidEndpoint,
 }
 
 /// <summary>Ошибка движка распознавания. Сообщение не содержит ключей и текста диктовки.</summary>

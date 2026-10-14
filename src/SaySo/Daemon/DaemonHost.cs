@@ -18,7 +18,7 @@ namespace SaySo.Daemon;
 internal sealed class DaemonHost : IDisposable
 {
     private const uint CmdInsertLast = 1, CmdCopyLast = 2, CmdSettings = 3, CmdPause = 4, CmdExit = 5;
-    private static readonly TimeSpan QuitWait = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan QuitWait = IpcProtocol.QuitGrace;
     private const string MutexName = @"Local\SaySo.Daemon";
 
     private readonly AppPaths _paths;
@@ -37,6 +37,7 @@ internal sealed class DaemonHost : IDisposable
     private bool _ipcSuspended;
     private readonly OverlayWindow _overlay;
     private readonly HttpClient _http = SettingsDictationEngines.CreateHttpClient();
+    private readonly SettingsDictationEngines _engines;
     private readonly DictationCoordinator _dictation;
     private IDisposable? _trimTimer;
 
@@ -53,6 +54,8 @@ internal sealed class DaemonHost : IDisposable
     private nint _dictationTarget;
     private bool _quitAfterSession;
     private IDisposable? _quitTimer;
+    private string? _lastErrorDetail;
+    private readonly MinIntervalGate _clickReinstallGate = new(TimeSpan.FromSeconds(1), TimeProvider.System);
 
     private DaemonHost(AppPaths paths, SettingsStore settingsStore, AppSettings settings)
     {
@@ -65,13 +68,13 @@ internal sealed class DaemonHost : IDisposable
         SynchronizationContext.SetSynchronizationContext(_window.Sync);
         _inserter = new TextInserter(_window.Handle, TimeProvider.System);
         _icons = TrayIcons.Create();
-        _tray = new TrayIcon(_window.Handle, DaemonWindow.TrayMessage);
+        _tray = new TrayIcon(_window.Handle, DaemonWindow.TrayMessage, (due, action) => _window.SetTimer(due, action));
 
         // Контекст синхронизации главного потока уже установлен выше: продолжения HandleAsync возвращаются на этот поток.
-        var engines = new SettingsDictationEngines(() => _settings, _secretStore.Load, _http, () => new ClientWebSocketTransport());
+        _engines = new SettingsDictationEngines(() => _settings, _secretStore.Load, _http, () => new ClientWebSocketTransport());
         _overlay = new OverlayWindow(() => _dictation?.CurrentLevel ?? 0f);
         _dictation = new DictationCoordinator(
-            new DictationPipeline(engines),
+            new DictationPipeline(_engines),
             (onData, onError) => new WasapiAudioSource(_settings.MicrophoneDeviceId, _settings.MicrophoneDeviceName, onData, onError),
             _overlay,
             new InserterOutput(_inserter, () => _dictationTarget = _pressTarget),
@@ -318,7 +321,12 @@ internal sealed class DaemonHost : IDisposable
         {
             case Native.WM_LBUTTONUP:
                 // Щелчок по значку — путь восстановления для пользователя, если система сняла хук.
-                TryReinstallHotkey("щелчок по значку", cancelRecording: true);
+                // Двойной щелчок приносит два WM_LBUTTONUP: второй раз в течение секунды хук не пересоздаём.
+                if (_clickReinstallGate.TryPass())
+                {
+                    TryReinstallHotkey("щелчок по значку", cancelRecording: true);
+                }
+
                 break;
             case Native.WM_LBUTTONDBLCLK:
                 OpenSettings();
@@ -361,6 +369,7 @@ internal sealed class DaemonHost : IDisposable
                 if (!ClipboardText.SetText(_window.Handle, last.Text, excludeFromHistory: false))
                 {
                     Log.Info("Скопировать последнее: буфер обмена недоступен");
+                    ShowMenuActionProblem(InsertOutcome.ClipboardUnavailable);
                 }
 
                 break;
@@ -389,10 +398,20 @@ internal sealed class DaemonHost : IDisposable
             await Task.Delay(100);
             var outcome = await _inserter.InsertAsync(text, [], expectedForeground: LastTarget);
             Log.Info($"Вставить последнее: {outcome}");
+            ShowMenuActionProblem(outcome);
         }
         catch (Exception e)
         {
             Log.Error("Вставить последнее", e);
+        }
+    }
+
+    // Пункты меню трея сообщают о неудаче теми же строками оверлея, что и диктовка; иначе щелчок «ничего не делает».
+    private void ShowMenuActionProblem(InsertOutcome outcome)
+    {
+        if (OverlayMessages.ForInsertOutcome(outcome) is { } text && _dictation.State == DictationState.Idle)
+        {
+            _overlay.ShowMessage(text, OverlayTone.Error);
         }
     }
 
@@ -402,7 +421,17 @@ internal sealed class DaemonHost : IDisposable
         switch (message)
         {
             case IpcProtocol.ReloadSettings:
-                _settings = _settingsStore.Load();
+                if (_settingsStore.TryLoad(out var reloaded))
+                {
+                    _settings = reloaded;
+                }
+                else
+                {
+                    // Файл временно занят: откат на умолчания сбросил бы горячую клавишу и пересоздал выключенный автозапуск.
+                    Log.Info("settings.json не прочитан — остаются прежние настройки");
+                }
+
+                _engines.ResetKeyPauses(); // настройки изменены пользователем: ключ мог быть исправлен, а VPN включён
                 _ipcSuspended = false; // окно настроек закончило запись комбинации (или умерло, не прислав Resume)
                 if (_hotkey is null)
                 {
@@ -542,6 +571,8 @@ internal sealed class DaemonHost : IDisposable
 
         if (_quitAfterSession)
         {
+            _quitTimer?.Dispose(); // страховка больше не нужна: сессия закончилась сама
+            _quitTimer = null;
             Native.PostQuitMessage(0);
             return;
         }
@@ -575,8 +606,8 @@ internal sealed class DaemonHost : IDisposable
         {
             // Синхронная часть отмены гасит плашку и значок; ошибку показываем сразу после неё, не дожидаясь закрытия сессии движка.
             var cancel = _dictation.HandleAsync(HotkeyAction.Cancel);
-            _overlay.ShowMessage("Не удалось запустить запись — подробности в журнале", OverlayTone.Error);
-            UpdateTray(TrayState.Error);
+            _overlay.ShowMessage(OverlayMessages.StartFailed, OverlayTone.Error);
+            UpdateTray(TrayState.Error, OverlayMessages.StartFailed);
             if (_settings.SoundsEnabled)
             {
                 SoundPlayer.Play(SoundKind.Error);
@@ -662,7 +693,7 @@ internal sealed class DaemonHost : IDisposable
             _cancelInFlight = false;
         }
 
-        // Путь сбоя микрофона не вызывает SessionEnded, поэтому применяем и здесь (повторный вызов безвреден).
+        // Отмена сама поднимает SessionEnded (в том числе при сбое микрофона); этот вызов страхует случай, когда отменять было уже нечего.
         if (_dictation.State != DictationState.Recording && !_disposing)
         {
             ApplyPendingHotkeyChanges();
@@ -713,8 +744,8 @@ internal sealed class DaemonHost : IDisposable
     private TrayState RestingTrayState => _paused ? TrayState.Paused : TrayState.Idle;
 
     // Координатор сообщает «Idle» после каждой сессии; при ручной паузе значок остаётся «приостановлено».
-    private void OnDictationTray(TrayState state) =>
-        UpdateTray(state == TrayState.Idle && _paused ? TrayState.Paused : state);
+    private void OnDictationTray(TrayState state, string? detail) =>
+        UpdateTray(state == TrayState.Idle && _paused ? TrayState.Paused : state, detail);
 
     private void ScheduleTrim(TimeSpan delay)
     {
@@ -736,14 +767,19 @@ internal sealed class DaemonHost : IDisposable
         }
     }
 
-    private void UpdateTray(TrayState state)
+    private void UpdateTray(TrayState state, string? errorDetail = null)
     {
         _trayState = state;
+        if (state == TrayState.Error && errorDetail is not null)
+        {
+            _lastErrorDetail = errorDetail; // RefreshIcons перерисовывает значок без текста: берём запомненный
+        }
+
         var tooltip = state switch
         {
             TrayState.Paused => "SaySo — приостановлено",
             TrayState.Recording => "SaySo — запись…",
-            TrayState.Error => "SaySo — последняя диктовка не удалась (подробности в настройках → История)",
+            TrayState.Error => TrayTooltip.ForError(_lastErrorDetail),
             _ => $"SaySo — удерживайте {HotkeyFormatter.Format(_settings.Hotkey.Keys)}",
         };
         _tray.Set(_icons.Get(state), tooltip);

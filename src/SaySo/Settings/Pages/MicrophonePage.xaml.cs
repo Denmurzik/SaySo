@@ -48,7 +48,7 @@ public sealed partial class MicrophonePage : UserControl
         DevicesBox.Items.Add(new ComboBoxItem { Content = "Как в Windows (по умолчанию)", Tag = DeviceChoice.Default });
         foreach (var device in devices)
         {
-            DevicesBox.Items.Add(new ComboBoxItem { Content = device.Name, Tag = new DeviceChoice(device.Id, device.Name) });
+            DevicesBox.Items.Add(new ComboBoxItem { Content = device.Name, Tag = new DeviceChoice(device.Id, MicrophoneSelector.NameToRemember(device.Name)) });
         }
 
         // Показываем то устройство, которое демон реально возьмёт: по идентификатору или (другой порт USB) по имени.
@@ -61,11 +61,13 @@ public sealed partial class MicrophonePage : UserControl
         {
             case MicrophoneMatch.ById or MicrophoneMatch.ByName:
                 selected = devices.ToList().FindIndex(d => d.Id == resolution.Endpoint!.Id) + 1;
-                if (resolution.Match == MicrophoneMatch.ById && string.IsNullOrWhiteSpace(settings.MicrophoneDeviceName))
+                if (resolution.Match == MicrophoneMatch.ById && string.IsNullOrWhiteSpace(settings.MicrophoneDeviceName)
+                    && MicrophoneSelector.NameToRemember(resolution.Endpoint!.Name) is { } nameToRemember)
                 {
                     // Настройки до появления имени: дописываем его для того же устройства (выбор не меняется);
                     // при неудаче записи модель останется «грязной» и сохранится при закрытии окна.
-                    settings.MicrophoneDeviceName = resolution.Endpoint!.Name;
+                    // Имя-заглушка (драйвер не отдал имя) не запоминается: по ней нельзя узнать устройство.
+                    settings.MicrophoneDeviceName = nameToRemember;
                     _model.SaveSettings();
                 }
 
@@ -198,7 +200,7 @@ public sealed partial class MicrophonePage : UserControl
     }
 
     private void ShowError(MicrophoneException e) =>
-        ShowMessage(e.UserMessage, privacyLink: e.Kind == MicrophoneErrorKind.AccessDenied);
+        ShowMessage(e.Detail, privacyLink: e.Kind == MicrophoneErrorKind.AccessDenied);
 
     private void ShowMessage(string message, bool privacyLink)
     {

@@ -29,8 +29,8 @@ public class WasapiIntegrationTests
             Interlocked.Add(ref total, data.Length);
             oddChunk |= data.Length % 2 != 0;
         });
-        await capture.StartAsync().WaitAsync(TimeSpan.FromSeconds(5));
-        await Task.Delay(700);
+        await capture.StartAsync().WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        await Task.Delay(700, TestContext.Current.CancellationToken);
         capture.Stop();
 
         Assert.False(oddChunk);
@@ -43,8 +43,8 @@ public class WasapiIntegrationTests
         Assert.SkipWhen(WasapiDevices.ListCaptureDevices().Count == 0, "Нет микрофона.");
         long total = 0;
         using var capture = new WasapiCapture("{нет-такого-устройства}", data => Interlocked.Add(ref total, data.Length));
-        await capture.StartAsync().WaitAsync(TimeSpan.FromSeconds(5));
-        await Task.Delay(400);
+        await capture.StartAsync().WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        await Task.Delay(400, TestContext.Current.CancellationToken);
         capture.Stop();
         Assert.True(Interlocked.Read(ref total) > 0);
     }
@@ -54,10 +54,25 @@ public class WasapiIntegrationTests
     {
         Assert.SkipWhen(WasapiDevices.ListCaptureDevices().Count == 0, "Нет микрофона.");
         var capture = new WasapiCapture(null, _ => { });
-        await capture.StartAsync().WaitAsync(TimeSpan.FromSeconds(5));
+        await capture.StartAsync().WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
         Assert.Throws<InvalidOperationException>(() => { _ = capture.StartAsync(); });
         capture.Stop();
         capture.Stop();
         capture.Dispose();
+    }
+
+    [Fact]
+    public async Task Capture_DataCallbackThrows_IsReportedAsMicrophoneException_ProcessSurvives()
+    {
+        Assert.SkipWhen(WasapiDevices.ListCaptureDevices().Count == 0, "Нет микрофона.");
+        var reported = new TaskCompletionSource<MicrophoneException>(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var capture = new WasapiCapture(null, _ => throw new InvalidOperationException("сбой обработчика"), e => reported.TrySetResult(e));
+        await capture.StartAsync().WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+
+        var error = await reported.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+
+        Assert.Equal(MicrophoneErrorKind.Other, error.Kind);
+        Assert.Contains("InvalidOperationException", error.Message);
+        capture.Stop(); // и остановка после сбоя потока не зависает
     }
 }

@@ -1,3 +1,5 @@
+using System.Text;
+
 namespace SaySo.Core.Diagnostics;
 
 /// <summary>
@@ -9,6 +11,7 @@ public static class Log
     public const long MaxBytes = 256 * 1024;
 
     private static readonly object Gate = new();
+    private static readonly UTF8Encoding Utf8NoBom = new(encoderShouldEmitUTF8Identifier: false);
 
     public static string? FilePath { get; set; }
 
@@ -34,7 +37,11 @@ public static class Log
                     File.Move(path, path + ".1", overwrite: true);
                 }
 
-                File.AppendAllText(path, $"{DateTimeOffset.Now:yyyy-MM-dd HH:mm:ss.fff} {level} {message}{Environment.NewLine}");
+                // Журнал пишут демон и окно настроек одновременно: общий доступ на запись, иначе вторая запись падает с IOException
+                // и строка пропадает; FileShare.Delete — чтобы ротация (переименование) одного процесса не ломала другого.
+                using var stream = new FileStream(path, FileMode.Append, FileAccess.Write, FileShare.ReadWrite | FileShare.Delete);
+                var line = $"{DateTimeOffset.Now:yyyy-MM-dd HH:mm:ss.fff} {level} {message}{Environment.NewLine}";
+                stream.Write(Utf8NoBom.GetBytes(line));
             }
             catch (IOException)
             {

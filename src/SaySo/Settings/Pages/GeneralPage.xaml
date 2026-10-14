@@ -77,6 +77,9 @@
                         <TextBlock Text="Запускать от имени администратора" Style="{StaticResource CardTitle}" />
                         <TextBlock Style="{StaticResource CardDescription}"
                                    Text="Нужно, чтобы вставлять текст в окна, запущенные от администратора (терминалы, IDE). Автозапуск тогда идёт через Планировщик заданий; потребуется подтверждение UAC." />
+                        <TextBlock x:Name="AdminWarning" Style="{StaticResource CardDescription}" Margin="0,6,0,0"
+                                   Foreground="{ThemeResource SystemFillColorCautionBrush}"
+                                   Text="Повышенные права получит SaySo.exe из папки, куда могут писать программы вашей учётной записи. Включайте, только если доверяете установленным программам." />
                     </StackPanel>
                     <ToggleSwitch x:Name="AdminSwitch" Grid.Column="1" OnContent="Вкл" OffContent="Выкл" Toggled="OnAdminToggled" />
                 </Grid>

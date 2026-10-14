@@ -19,6 +19,7 @@ public sealed class DictationCoordinatorTests : IDisposable
     private readonly FakeOutput _output = new();
     private readonly FakeFeedback _feedback = new();
     private readonly ManualScheduler _scheduler = new();
+    private readonly ManualTimeProvider _time = new();
     private readonly AppSettings _settings = new();
     private readonly List<FakeAudioSource> _sources = [];
     private readonly HistoryStore _history;
@@ -44,7 +45,7 @@ public sealed class DictationCoordinatorTests : IDisposable
                 return s;
             },
             _overlay, _output, _feedback, _scheduler, _history, () => _settings,
-            () => _resets++, action => action(), TimeProvider.System);
+            () => _resets++, action => action(), _time);
     }
 
     [Fact]
@@ -119,24 +120,168 @@ public sealed class DictationCoordinatorTests : IDisposable
         Assert.Empty(_feedback.Sounds);
     }
 
+    private static MicrophoneException Denied() => MicrophoneException.FromHResult(unchecked((int)0x80070005), "Initialize");
+
+    private DictationCoordinator CreateWithFailingMicrophone(Exception failure, Action? onEnded = null) =>
+        CreateWith((d, e) => new FakeAudioSource(d, e) { StartResult = Task.FromException(failure) }, onEnded);
+
     [Fact]
-    public async Task MicrophoneDenied_ShowsPrivacyHint_AndReturnsToIdle()
+    public async Task MicrophoneDenied_ShowsPrivacyHintAfterDelay_AndReturnsToIdle()
     {
-        var denied = MicrophoneException.FromHResult(unchecked((int)0x80070005), "Initialize");
-        var pipeline = new DictationPipeline(new FakeEngines { Primary = _primary });
-        var coordinator = new DictationCoordinator(pipeline,
-            (d, e) => new FakeAudioSource(d, e) { StartResult = Task.FromException(denied) },
-            _overlay, _output, _feedback, _scheduler, _history, () => _settings, () => _resets++, a => a(), TimeProvider.System);
+        var ended = 0;
+        var coordinator = CreateWithFailingMicrophone(Denied(), () => ended++);
 
         await coordinator.HandleAsync(HotkeyAction.StartRecording);
 
+        // Сбой записан в журнал, состояние откачено, но реакции пока нет: это может быть правый Ctrl+C.
         Assert.Equal(DictationState.Idle, coordinator.State);
+        Assert.Empty(_overlay.Calls);
+        Assert.Empty(_feedback.Sounds);
+        Assert.Empty(_feedback.Tray);
+        Assert.Empty(_primary.Sessions);
+        Assert.Equal(0, _resets);
+        Assert.Equal(0, ended);
+
+        _scheduler.Fire(DictationCoordinator.EngineStartDelay);
+
         Assert.StartsWith("message:Error:", _overlay.Calls.Single());
-        Assert.Contains("Конфиденциальность", _overlay.Calls.Single());
+        Assert.Contains("Параметры", _overlay.Calls.Single());
+        Assert.Contains("Конфиденциальность", _feedback.TrayDetails[^1]); // полный путь — в подсказке значка
         Assert.Equal([SoundKind.Error], _feedback.Sounds);
         Assert.Equal(TrayState.Error, _feedback.Tray[^1]);
+        Assert.Equal(DictationState.Idle, coordinator.State);
         Assert.Equal(1, _resets);
+        Assert.Equal(1, ended);
+    }
+
+    [Theory]
+    [InlineData(HotkeyAction.Cancel)]
+    [InlineData(HotkeyAction.StopRecording)]
+    public async Task MicrophoneFailure_ThenShortcutWithinDelay_IsSilent(HotkeyAction second)
+    {
+        var ended = 0;
+        var coordinator = CreateWithFailingMicrophone(Denied(), () => ended++);
+        await coordinator.HandleAsync(HotkeyAction.StartRecording);
+
+        await coordinator.HandleAsync(second); // правый Ctrl + C: вторая клавиша раньше 150 мс
+
+        _scheduler.Fire(DictationCoordinator.EngineStartDelay);
+        Assert.Empty(_overlay.Calls);
+        Assert.Empty(_feedback.Sounds);
+        Assert.Empty(_feedback.Tray);
+        Assert.Equal(DictationState.Idle, coordinator.State);
+        Assert.Equal(1, _resets); // автомат хука сбрасывается и в этом случае — ровно один раз
+        Assert.Equal(1, ended);
+        Assert.All(_scheduler.Items, i => Assert.True(i.Cancelled));
+    }
+
+    [Fact]
+    public async Task MicrophoneFailure_ShortcutCancelArrivesWhileMicrophoneStillStarting_IsSilent()
+    {
+        var micReady = new TaskCompletionSource();
+        var ended = 0;
+        var coordinator = CreateWith((d, e) => new FakeAudioSource(d, e) { StartResult = micReady.Task }, () => ended++);
+        var starting = coordinator.HandleAsync(HotkeyAction.StartRecording);
+        var cancelling = coordinator.HandleAsync(HotkeyAction.Cancel);
+
+        micReady.SetException(Denied());
+        await starting;
+        await cancelling;
+
+        _scheduler.Fire(DictationCoordinator.EngineStartDelay);
+        Assert.Empty(_overlay.Calls);
+        Assert.Empty(_feedback.Sounds);
+        Assert.Equal(1, _resets);
+        Assert.Equal(1, ended);
+    }
+
+    [Fact]
+    public async Task MicrophoneFailure_AfterDelayAlreadyPassed_ShowsImmediately()
+    {
+        var micReady = new TaskCompletionSource();
+        var ended = 0;
+        var coordinator = CreateWith((d, e) => new FakeAudioSource(d, e) { StartResult = micReady.Task }, () => ended++);
+        var starting = coordinator.HandleAsync(HotkeyAction.StartRecording);
+
+        _time.Advance(TimeSpan.FromMilliseconds(400)); // клавиша удерживается дольше 150 мс — это не сочетание
+        micReady.SetException(Denied());
+        await starting;
+
+        Assert.StartsWith("message:Error:", _overlay.Calls.Single());
+        Assert.Equal([SoundKind.Error], _feedback.Sounds);
+        Assert.Equal(1, _resets);
+        Assert.Equal(1, ended);
+    }
+
+    [Fact]
+    public async Task MicrophoneFailure_ThenNewPress_DropsOldErrorWithoutResettingHotkey()
+    {
+        var failing = true;
+        var coordinator = CreateWith((d, e) =>
+        {
+            var source = new FakeAudioSource(d, e);
+            if (failing)
+            {
+                source.StartResult = Task.FromException(Denied());
+            }
+            else
+            {
+                _sources.Add(source);
+            }
+
+            return source;
+        });
+        await coordinator.HandleAsync(HotkeyAction.StartRecording);
+        failing = false;
+
+        await coordinator.HandleAsync(HotkeyAction.StartRecording); // автомат хука заново сообщил о начале записи
+        _scheduler.Fire(DictationCoordinator.EngineStartDelay);
+
+        Assert.Equal(["recording"], _overlay.Calls); // ошибка прошлой попытки не показана
+        Assert.Equal(DictationState.Recording, coordinator.State);
+        Assert.Equal(0, _resets); // хук не сбрасываем: он как раз ведёт новую запись
+    }
+
+    [Fact]
+    public async Task MicrophoneStartHangs_TimesOut_RollsBackAndReportsError()
+    {
+        var hung = new TaskCompletionSource(); // драйвер завис в Activate/Initialize
+        FakeAudioSource? source = null;
+        var ended = 0;
+        var coordinator = CreateWith((d, e) => source = new FakeAudioSource(d, e) { StartResult = hung.Task }, () => ended++);
+
+        var starting = coordinator.HandleAsync(HotkeyAction.StartRecording);
+        Assert.False(starting.IsCompleted);
+        Assert.Contains(_scheduler.Items, i => i.Delay == DictationCoordinator.MicrophoneStartTimeout);
+
+        _time.Advance(DictationCoordinator.MicrophoneStartTimeout);
+        _scheduler.Fire(DictationCoordinator.MicrophoneStartTimeout);
+        await starting;
+
+        Assert.Equal(DictationState.Idle, coordinator.State);
+        Assert.True(source!.Disposed);
+        Assert.Equal("message:Error:Ошибка микрофона (0x800705B4)", _overlay.Calls.Single()); // ждали дольше 150 мс — сразу
+        Assert.Equal([SoundKind.Error], _feedback.Sounds);
+        Assert.Equal(1, _resets);
+        Assert.Equal(1, ended);
         Assert.Empty(_primary.Sessions);
+
+        hung.SetException(new InvalidOperationException("поздний сбой")); // позднее завершение запуска ни на что не влияет
+        Assert.Equal(DictationState.Idle, coordinator.State);
+    }
+
+    [Fact]
+    public async Task MicrophoneStartsInTime_TimeoutTimerIsCancelled()
+    {
+        var micReady = new TaskCompletionSource();
+        var coordinator = CreateWith((d, e) => new FakeAudioSource(d, e) { StartResult = micReady.Task });
+        var starting = coordinator.HandleAsync(HotkeyAction.StartRecording);
+
+        micReady.SetResult();
+        await starting;
+
+        Assert.True(_scheduler.Items.Single(i => i.Delay == DictationCoordinator.MicrophoneStartTimeout).Cancelled);
+        Assert.Equal(DictationState.Recording, coordinator.State);
     }
 
     [Fact]
@@ -173,6 +318,41 @@ public sealed class DictationCoordinatorTests : IDisposable
     }
 
     [Fact]
+    public async Task GroqOnlyMode_FallbackText_ShowsNoReservePlaque()
+    {
+        // Ключа Gemini нет — осознанная настройка «только Groq»: после каждой диктовки плашку не показываем.
+        _primary.Factory = _ => throw new TranscriptionException(EngineErrorKind.NotConfigured, "нет ключа");
+        var c = Create();
+        await c.HandleAsync(HotkeyAction.StartRecording);
+        _scheduler.Fire(DictationCoordinator.EngineStartDelay);
+        _sources[0].Push(TestAudio.Speech(1000));
+        await c.HandleAsync(HotkeyAction.StopRecording);
+
+        Assert.Equal(["резервный текст"], _output.Texts);
+        Assert.DoesNotContain(_overlay.Calls, x => x.StartsWith("message:", StringComparison.Ordinal));
+        Assert.Equal("hide", _overlay.Calls[^1]);
+        Assert.Equal(SoundKind.Stop, _feedback.Sounds[^1]);
+    }
+
+    [Fact]
+    public async Task BothEnginesFail_ShortTextOnOverlay_FullTextInTrayDetail()
+    {
+        _primary.Factory = attempt => attempt == 0
+            ? Fail.Session(EngineErrorKind.Network)
+            : throw new TranscriptionException(EngineErrorKind.Network, "все ключи на паузе");
+        _fallback.Handler = _ => Fail.With(EngineErrorKind.RegionBlocked);
+        var c = Create();
+        await c.HandleAsync(HotkeyAction.StartRecording);
+        _scheduler.Fire(DictationCoordinator.EngineStartDelay);
+        _sources[0].Push(TestAudio.Speech(1000));
+        await c.HandleAsync(HotkeyAction.StopRecording);
+
+        Assert.Equal("message:Error:Gemini и Groq недоступны — подробности в трее", _overlay.Calls[^1]);
+        Assert.Equal(TrayState.Error, _feedback.Tray[^1]);
+        Assert.Equal("Gemini: нет связи с сервером; Groq: недоступен в вашем регионе — проверьте VPN", _feedback.TrayDetails[^1]);
+    }
+
+    [Fact]
     public async Task BothEnginesFail_ShowsError()
     {
         _primary.Factory = attempt => attempt == 0
@@ -192,10 +372,10 @@ public sealed class DictationCoordinatorTests : IDisposable
     }
 
     [Theory]
-    [InlineData(InsertOutcome.BlockedByElevation, "администратора")]
+    [InlineData(InsertOutcome.BlockedByElevation, "Админ-окно")]
     [InlineData(InsertOutcome.ClipboardUnavailable, "Буфер обмена занят")]
     [InlineData(InsertOutcome.NoTarget, "Нет активного окна")]
-    [InlineData(InsertOutcome.InputBlocked, "Не удалось нажать Ctrl+V")]
+    [InlineData(InsertOutcome.InputBlocked, "Не вставилось")]
     public async Task InsertProblems_AreExplained_TextStaysInHistory(InsertOutcome outcome, string fragment)
     {
         _output.Outcome = outcome;
@@ -211,7 +391,7 @@ public sealed class DictationCoordinatorTests : IDisposable
     }
 
     [Fact]
-    public async Task StartWhileFinishing_IsIgnored()
+    public async Task StartWhileFinishing_IsIgnored_ButSoundsErrorAfterDelay()
     {
         _output.Gate = new TaskCompletionSource();
         var c = Create();
@@ -224,10 +404,38 @@ public sealed class DictationCoordinatorTests : IDisposable
         Assert.Equal(DictationState.Finishing, c.State);
         await c.HandleAsync(HotkeyAction.StartRecording);
         Assert.Single(_sources);
+        Assert.Equal([SoundKind.Start], _feedback.Sounds); // сразу тихо: это может быть сочетание клавиш
+
+        _scheduler.Fire(DictationCoordinator.EngineStartDelay);
+        Assert.Equal([SoundKind.Start, SoundKind.Error], _feedback.Sounds); // запись не пойдёт — даём знать
 
         _output.Gate.SetResult();
         await stopping;
         Assert.Equal(DictationState.Idle, c.State);
+    }
+
+    [Fact]
+    public async Task StartWhileFinishing_ThenShortcutWithinDelay_StaysSilent()
+    {
+        _output.Gate = new TaskCompletionSource();
+        var c = Create();
+        await c.HandleAsync(HotkeyAction.StartRecording);
+        _scheduler.Fire(DictationCoordinator.EngineStartDelay);
+        _sources[0].Push(TestAudio.Speech(1000));
+        var stopping = c.HandleAsync(HotkeyAction.StopRecording);
+        await WaitUntilAsync(() => _output.Texts.Count > 0);
+
+        await c.HandleAsync(HotkeyAction.StartRecording);
+        await c.HandleAsync(HotkeyAction.Cancel); // правый Ctrl + C сразу после диктовки
+        _scheduler.Fire(DictationCoordinator.EngineStartDelay);
+
+        Assert.Equal([SoundKind.Start], _feedback.Sounds);
+        Assert.Equal(DictationState.Finishing, c.State);
+        Assert.Equal(0, _resets);
+
+        _output.Gate.SetResult();
+        await stopping;
+        Assert.Equal(1, _resets);
     }
 
     [Fact]
@@ -252,7 +460,7 @@ public sealed class DictationCoordinatorTests : IDisposable
         FakeAudioSource? source = null;
         var c = new DictationCoordinator(pipeline,
             (d, e) => source = new FakeAudioSource(d, e) { StartResult = micReady.Task },
-            _overlay, _output, _feedback, _scheduler, _history, () => _settings, () => _resets++, a => a(), TimeProvider.System);
+            _overlay, _output, _feedback, _scheduler, _history, () => _settings, () => _resets++, a => a(), _time);
 
         var starting = c.HandleAsync(HotkeyAction.StartRecording);
         var stopping = c.HandleAsync(HotkeyAction.StopRecording);
@@ -308,7 +516,7 @@ public sealed class DictationCoordinatorTests : IDisposable
     {
         var pipeline = new DictationPipeline(new FakeEngines { Primary = _primary, Fallback = _fallback });
         var c = new DictationCoordinator(pipeline, audio,
-            _overlay, _output, _feedback, _scheduler, _history, () => _settings, () => _resets++, a => a(), TimeProvider.System);
+            _overlay, _output, _feedback, _scheduler, _history, () => _settings, () => _resets++, a => a(), _time);
         if (onEnded is not null)
         {
             c.SessionEnded += onEnded;
@@ -342,7 +550,7 @@ public sealed class DictationCoordinatorTests : IDisposable
                 _sources.Add(s);
                 return s;
             },
-            _overlay, _output, _feedback, _scheduler, badHistory, () => _settings, () => _resets++, a => a(), TimeProvider.System);
+            _overlay, _output, _feedback, _scheduler, badHistory, () => _settings, () => _resets++, a => a(), _time);
         await SpeakAndStopAsync(c);
 
         Assert.Equal(["текст"], _output.Texts);
@@ -424,7 +632,12 @@ public sealed class DictationCoordinatorTests : IDisposable
         await c.HandleAsync(HotkeyAction.StartRecording);
 
         Assert.Equal(DictationState.Idle, c.State);
-        Assert.StartsWith("message:Error:Не удалось начать запись", _overlay.Calls.Single());
+        Assert.Empty(_overlay.Calls); // как и при отказе микрофона: показ — через EngineStartDelay
+        Assert.Equal(0, _resets);
+
+        _scheduler.Fire(DictationCoordinator.EngineStartDelay);
+
+        Assert.Equal($"message:Error:{OverlayMessages.StartFailed}", _overlay.Calls.Single());
         Assert.Equal([SoundKind.Error], _feedback.Sounds);
         Assert.Equal(TrayState.Error, _feedback.Tray[^1]);
         Assert.Equal(1, _resets);

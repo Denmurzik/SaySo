@@ -11,7 +11,7 @@ public sealed class GeminiKeyRing(TimeProvider time)
     public static readonly TimeSpan InvalidKeyPause = TimeSpan.FromHours(1);
 
     private readonly object _gate = new();
-    private readonly Dictionary<string, DateTimeOffset> _pausedUntil = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, (DateTimeOffset Until, EngineErrorKind Reason)> _paused = new(StringComparer.Ordinal);
     private List<string> _keys = [];
     private int _current;
 
@@ -32,35 +32,62 @@ public sealed class GeminiKeyRing(TimeProvider time)
         {
             var currentKey = _keys.Count > 0 ? _keys[_current] : null;
             _keys = keys.Where(k => !string.IsNullOrWhiteSpace(k)).Select(k => k.Trim()).Distinct(StringComparer.Ordinal).ToList();
-            foreach (var stale in _pausedUntil.Keys.Where(k => !_keys.Contains(k)).ToList())
+            foreach (var stale in _paused.Keys.Where(k => !_keys.Contains(k)).ToList())
             {
-                _pausedUntil.Remove(stale);
+                _paused.Remove(stale);
             }
 
             _current = currentKey is null ? 0 : Math.Max(0, _keys.IndexOf(currentKey));
         }
     }
 
-    public string? Acquire()
+    public string? Acquire() => Acquire(out _);
+
+    /// <param name="pausedReason">
+    /// Если свободного ключа нет, а ключи есть (все на паузе), — причина паузы того ключа, который освободится первым
+    /// (<see cref="EngineErrorKind.QuotaExceeded"/> или <see cref="EngineErrorKind.AuthFailed"/>); иначе
+    /// <see cref="EngineErrorKind.NotConfigured"/>.
+    /// </param>
+    public string? Acquire(out EngineErrorKind pausedReason)
     {
         lock (_gate)
         {
             var now = time.GetUtcNow();
+            (DateTimeOffset Until, EngineErrorKind Reason)? soonest = null;
             for (var i = 0; i < _keys.Count; i++)
             {
                 var index = (_current + i) % _keys.Count;
                 var key = _keys[index];
-                if (_pausedUntil.TryGetValue(key, out var until) && until > now)
+                if (_paused.TryGetValue(key, out var pause) && pause.Until > now)
                 {
+                    if (soonest is null || pause.Until < soonest.Value.Until)
+                    {
+                        soonest = pause;
+                    }
+
                     continue;
                 }
 
-                _pausedUntil.Remove(key);
+                _paused.Remove(key);
                 _current = index;
+                pausedReason = EngineErrorKind.NotConfigured;
                 return key;
             }
 
+            pausedReason = soonest?.Reason ?? EngineErrorKind.NotConfigured;
             return null;
+        }
+    }
+
+    /// <summary>
+    /// Снимает все паузы. Вызывается, когда пользователь изменил настройки (ключ мог быть исправлен, VPN включён):
+    /// иначе недействительный по ошибке ключ молчал бы целый час.
+    /// </summary>
+    public void ResetPauses()
+    {
+        lock (_gate)
+        {
+            _paused.Clear();
         }
     }
 
@@ -83,7 +110,7 @@ public sealed class GeminiKeyRing(TimeProvider time)
         {
             if (_keys.Contains(key))
             {
-                _pausedUntil[key] = time.GetUtcNow() + pause;
+                _paused[key] = (time.GetUtcNow() + pause, kind);
             }
         }
     }

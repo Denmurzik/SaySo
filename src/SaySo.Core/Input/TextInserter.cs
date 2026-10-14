@@ -39,13 +39,18 @@ public sealed class TextInserter
 
     public LastInsertion? Last { get; private set; }
 
+    /// <summary>Идентификатор «своего» процесса; тесты подменяют его, чтобы вставлять в окно из того же процесса.</summary>
+    internal uint OwnProcessId { get; init; } = (uint)Environment.ProcessId;
+
     public async Task<InsertOutcome> InsertAsync(string text, IReadOnlyCollection<int> keysToRelease, nint expectedForeground = 0)
     {
         await KeyboardInjector.WaitForKeysReleasedAsync(keysToRelease, TimeSpan.FromSeconds(1)).ConfigureAwait(true);
 
         var target = Native.GetForegroundWindow();
-        if (target == 0 || (expectedForeground != 0 && target != expectedForeground))
+        if (target == 0 || (expectedForeground != 0 && target != expectedForeground) || BelongsToProcess(target, OwnProcessId))
         {
+            // Окно нашего же процесса (например, меню трея, пока сессия завершается): Ctrl+V ушёл бы в никуда, а вставка
+            // считалась бы успешной.
             return InsertOutcome.NoTarget;
         }
 
@@ -91,6 +96,13 @@ public sealed class TextInserter
         }
 
         return InsertOutcome.Inserted;
+    }
+
+    internal static unsafe bool BelongsToProcess(nint hwnd, uint processId)
+    {
+        uint pid;
+        Native.GetWindowThreadProcessId(hwnd, &pid);
+        return pid == processId;
     }
 
     /// <returns>false — прежний текст нужно вернуть, но запись не удалась.</returns>

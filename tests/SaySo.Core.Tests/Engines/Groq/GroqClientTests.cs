@@ -145,4 +145,13 @@ public class GroqClientTests
         Assert.False(prompt.EndsWith(','));
         Assert.All(prompt.Split(", "), t => Assert.Contains(t, many));
     }
+
+    [Theory]
+    [InlineData(0, 30)]
+    [InlineData(100_000, 30)]
+    [InlineData(512 * 1024, 31)]
+    [InlineData(1024 * 1024, 32)]
+    [InlineData(19_200_000, 66)] // десять минут 16 кГц / 16 бит / моно
+    public void TranscribeTimeout_GrowsWithRecordingSize(long wavBytes, int expectedSeconds) =>
+        Assert.Equal(TimeSpan.FromSeconds(expectedSeconds), GroqClient.TranscribeTimeoutFor(wavBytes));
 }

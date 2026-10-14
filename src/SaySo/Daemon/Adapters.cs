@@ -66,11 +66,11 @@ internal sealed class InserterOutput(TextInserter inserter, Action onInsert) : I
     }
 }
 
-internal sealed class DaemonFeedback(Action<TrayState> setTray) : IDictationFeedback
+internal sealed class DaemonFeedback(Action<TrayState, string?> setTray) : IDictationFeedback
 {
     public void Play(SoundKind kind) => SoundPlayer.Play(kind);
 
-    public void SetTray(TrayState state) => setTray(state);
+    public void SetTray(TrayState state, string? detail = null) => setTray(state, detail);
 }
 
 /// <summary>Таймеры координатора на окне демона: действия выполняются на главном потоке.</summary>

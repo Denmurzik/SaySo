@@ -97,9 +97,16 @@ internal sealed class FakeFeedback : IDictationFeedback
 
     public List<TrayState> Tray { get; } = [];
 
+    /// <summary>Полный текст ошибки, переданный вместе с <see cref="TrayState.Error"/> (по порядку).</summary>
+    public List<string?> TrayDetails { get; } = [];
+
     public void Play(SoundKind kind) => Sounds.Add(kind);
 
-    public void SetTray(TrayState state) => Tray.Add(state);
+    public void SetTray(TrayState state, string? detail = null)
+    {
+        Tray.Add(state);
+        TrayDetails.Add(detail);
+    }
 }
 
 internal sealed class ManualScheduler : IScheduler

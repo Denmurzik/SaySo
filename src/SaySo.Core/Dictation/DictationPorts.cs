@@ -36,7 +36,8 @@ public interface IDictationFeedback
 {
     void Play(SoundKind kind);
 
-    void SetTray(TrayState state);
+    /// <param name="detail">Полный текст ошибки для подсказки значка (только для <see cref="TrayState.Error"/>).</param>
+    void SetTray(TrayState state, string? detail = null);
 }
 
 public interface IScheduler

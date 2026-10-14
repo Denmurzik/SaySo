@@ -60,6 +60,18 @@ public static class MicrophoneSelector
     }
 
     /// <summary>
+    /// Имя, которое стоит сохранить в настройках вместе с идентификатором: null для пустого имени и для имени-заглушки
+    /// (<see cref="WasapiDevices.UnknownDeviceName"/>, когда драйвер не отдал настоящее) — по такому «имени» устройство не узнать.
+    /// </summary>
+    public static string? NameToRemember(string? name)
+    {
+        var trimmed = name?.Trim();
+        return string.IsNullOrEmpty(trimmed) || string.Equals(trimmed, WasapiDevices.UnknownDeviceName, StringComparison.Ordinal)
+            ? null
+            : trimmed;
+    }
+
+    /// <summary>
     /// Имя для сравнения: без пробелов по краям и без номера порта, который Windows добавляет внутри скобок
     /// при подключении того же USB-устройства в другой порт («Микрофон (2- USB Audio)» → «Микрофон (USB Audio)»).
     /// Предполагается, что префикс «N- » стоит сразу после ПЕРВОЙ открывающей скобки; имена с другой структурой
