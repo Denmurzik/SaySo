@@ -17,10 +17,10 @@
 ## Why SaySo
 
 - **Smart, not verbatim.** Speech is transcribed by **Gemini 3.5 Transcribe** in *Smart* («Умный») mode: filler words are removed, self-corrections are resolved (*“Friday — no, Saturday”* → *“Saturday”*), punctuation, casing and numbers are formatted.
-- **Tiny in the background.** A NativeAOT daemon that never loads XAML: **0.2 MB** working set at idle (**6.9 MB** private). The WinUI 3 settings window is a separate process that fully exits when you close it.
+- **Tiny in the background.** A NativeAOT daemon that never loads XAML: **6.9 MB** of private memory at idle (its working set is trimmed to under 1 MB). The WinUI 3 settings window is a separate process that fully exits when you close it.
 - **Never loses what you said.** Add several Gemini keys and SaySo switches to the next one the moment a key hits its quota — even mid-sentence, re-sending what was already recorded. No keys left or network down? The recording goes to **Groq Whisper** with LLM cleanup instead.
 - **Works everywhere.** Pastes into whatever app is focused; your clipboard text is restored and dictations are kept out of Win+V history.
-- **Private by default.** Audio never touches the disk. API keys and history are encrypted with Windows DPAPI. Data flow: audio and your vocabulary terms go to Google Gemini; if the fallback kicks in, audio and the transcript go to Groq; checking API keys also calls these APIs.
+- **Private by default.** Audio never touches the disk. API keys and history are encrypted with Windows DPAPI. Data flow: audio and your vocabulary terms go to Google Gemini; if the fallback kicks in, audio, the transcript and your vocabulary terms go to Groq; checking API keys also calls these APIs.
 - **Russian interface.** The app's interface is currently in Russian; the Russian labels of settings pages, buttons and menu items are given in parentheses throughout this README.
 
 ## How it works
@@ -64,20 +64,15 @@ The tray menu (right-click the icon):
 
 <table>
 <tr>
-<td align="center" valign="top"><a href="docs/assets/settings-general.png"><img src="docs/assets/settings-general.png" width="440" alt="Settings: General"></a><br><sub>General («Общие»): hotkey, sounds, autostart, admin mode</sub></td>
-<td align="center" valign="top"><a href="docs/assets/settings-recognition.png"><img src="docs/assets/settings-recognition.png" width="440" alt="Settings: Recognition"></a><br><sub>Recognition («Распознавание»): Gemini keys, mode, language, Groq fallback</sub></td>
-</tr>
-<tr>
-<td align="center" valign="top"><a href="docs/assets/settings-dictionary.png"><img src="docs/assets/settings-dictionary.png" width="440" alt="Settings: Dictionary"></a><br><sub>Dictionary («Словарь»): names and terms to recognise exactly</sub></td>
-<td align="center" valign="top"><a href="docs/assets/settings-microphone.png"><img src="docs/assets/settings-microphone.png" width="440" alt="Settings: Microphone"></a><br><sub>Microphone («Микрофон»): device choice and level check</sub></td>
-</tr>
-<tr>
+<td align="center" valign="top"><a href="docs/assets/settings-dictionary.png"><img src="docs/assets/settings-dictionary.png" width="440" alt="Settings: Dictionary"></a><br><sub>Dictionary («Словарь»): names and terms to recognize exactly</sub></td>
 <td align="center" valign="top"><a href="docs/assets/settings-history.png"><img src="docs/assets/settings-history.png" width="440" alt="Settings: History"></a><br><sub>History («История»): the last 20 dictations</sub></td>
-<td align="center" valign="top"><a href="docs/assets/settings-about.png"><img src="docs/assets/settings-about.png" width="440" alt="Settings: About"></a><br><sub>About («О программе»): version, how to get a key, privacy</sub></td>
+</tr>
+<tr>
+<td align="center" valign="top" colspan="2"><a href="docs/assets/settings-about.png"><img src="docs/assets/settings-about.png" width="440" alt="Settings: About"></a><br><sub>About («О программе»): version, how to get a key, privacy</sub></td>
 </tr>
 </table>
 
-Click an image to open it full size. API keys and history in these screenshots are demo placeholders.
+The other pages are shown next to their descriptions: General («Общие») under [Admin mode](#admin-mode-optional), Recognition («Распознавание») under [API keys](#api-keys), Microphone («Микрофон») under [Microphone](#microphone). Click an image to open it full size. API keys and history in the screenshots are demo placeholders.
 
 ## Install
 
@@ -125,16 +120,16 @@ Windows does not let a normal app paste into windows running as administrator (e
 
 Measured on Windows 11 (x64), NativeAOT Release build:
 
-| Process | Working set | Private bytes |
+| Process | Private bytes | Working set |
 |---|---|---|
-| Daemon, idle after start | 0.2 MB | 6.9 MB |
-| Daemon, 10 s after a dictation | 0.3 MB | 8.8 MB |
-| Settings window (open) | 147.5 MB | 93.4 MB |
-| Settings window (closed) | process exits | — |
+| Daemon, idle after start | 6.9 MB | 0.2 MB |
+| Daemon, 10 s after a 1.5 s recording (placeholder API keys, recognition did not complete) | 8.8 MB | 0.3 MB |
+| Settings window (open, 6 s after launch) | 93.4 MB | 147.5 MB |
+| Settings window (closed) | process exits | process exits |
 
 Publish size: 66.6 MB (`SaySo.exe` is 9.6 MB).
 
-The daemon trims its working set after start and after every dictation, so *Private bytes* is the more telling column. The dictation row is a 1.5 s recording measured without real API keys; the settings row is 6 s after opening the window.
+The daemon trims its working set after start and after each session, so its working set stays below 1 MB and *Private bytes* is the more telling column; the settings window is not trimmed. The dictation row has no real recognition request behind it: a real dictation adds network buffers (WebSocket/TLS/HTTP), so expect somewhat more.
 
 ## Build & test
 
