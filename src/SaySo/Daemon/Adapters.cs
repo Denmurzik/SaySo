@@ -11,9 +11,9 @@ namespace SaySo.Daemon;
 /// Микрофон сессии. Координатор ловит <see cref="MicrophoneException"/> отдельно от прочих сбоев, поэтому любой сбой
 /// запуска оборачивается в неё; <see cref="Stop"/> и <see cref="Dispose"/> не бросают (их зовут при откате и отмене).
 /// </summary>
-internal sealed class WasapiAudioSource(string? deviceId, Action<ReadOnlySpan<byte>> onData, Action<MicrophoneException> onError) : IAudioSource
+internal sealed class WasapiAudioSource(string? deviceId, string? deviceName, Action<ReadOnlySpan<byte>> onData, Action<MicrophoneException> onError) : IAudioSource
 {
-    private readonly WasapiCapture _capture = new(deviceId, onData, onError);
+    private readonly WasapiCapture _capture = new(deviceId, onData, onError, deviceName);
 
     public async Task StartAsync()
     {

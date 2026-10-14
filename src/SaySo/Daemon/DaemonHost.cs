@@ -72,7 +72,7 @@ internal sealed class DaemonHost : IDisposable
         _overlay = new OverlayWindow(() => _dictation?.CurrentLevel ?? 0f);
         _dictation = new DictationCoordinator(
             new DictationPipeline(engines),
-            (onData, onError) => new WasapiAudioSource(_settings.MicrophoneDeviceId, onData, onError),
+            (onData, onError) => new WasapiAudioSource(_settings.MicrophoneDeviceId, _settings.MicrophoneDeviceName, onData, onError),
             _overlay,
             new InserterOutput(_inserter, () => _dictationTarget = _pressTarget),
             new DaemonFeedback(OnDictationTray),

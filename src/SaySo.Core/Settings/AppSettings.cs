@@ -15,6 +15,12 @@ public sealed class AppSettings
     /// <summary>Идентификатор устройства WASAPI; null — системный микрофон по умолчанию.</summary>
     public string? MicrophoneDeviceId { get; set; }
 
+    /// <summary>
+    /// Понятное имя выбранного микрофона (хранится вместе с идентификатором): по нему устройство находится заново,
+    /// если идентификатор изменился (другой порт USB). null — как у <see cref="MicrophoneDeviceId"/>.
+    /// </summary>
+    public string? MicrophoneDeviceName { get; set; }
+
     public bool SoundsEnabled { get; set; } = true;
 
     public bool AutostartEnabled { get; set; } = true;

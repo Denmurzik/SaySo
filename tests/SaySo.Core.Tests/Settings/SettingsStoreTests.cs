@@ -59,6 +59,7 @@ public class SettingsStoreTests
         Assert.True(s.AutostartEnabled);
         Assert.False(s.RunAsAdmin);
         Assert.Null(s.MicrophoneDeviceId);
+        Assert.Null(s.MicrophoneDeviceName);
         Assert.Empty(s.Vocabulary);
     }
 
@@ -74,6 +75,7 @@ public class SettingsStoreTests
         s.Recognition.LanguageCodes = ["ru-RU"];
         s.Vocabulary = ["Kubernetes", "SaySo"];
         s.MicrophoneDeviceId = "{0.0.1.00000000}.{abc}";
+        s.MicrophoneDeviceName = "Гарнитура (USB Audio)";
         s.SoundsEnabled = false;
         store.Save(s);
 
@@ -84,6 +86,7 @@ public class SettingsStoreTests
         Assert.Equal(new[] { "ru-RU" }, loaded.Recognition.LanguageCodes);
         Assert.Equal(new[] { "Kubernetes", "SaySo" }, loaded.Vocabulary);
         Assert.Equal("{0.0.1.00000000}.{abc}", loaded.MicrophoneDeviceId);
+        Assert.Equal("Гарнитура (USB Audio)", loaded.MicrophoneDeviceName);
         Assert.False(loaded.SoundsEnabled);
     }
 
@@ -160,5 +163,40 @@ public class SettingsStoreTests
         var s = new AppSettings();
         s.Recognition.LanguageCodes = [" ru-RU ", "", "ru-RU", "en-US"];
         Assert.Equal(new[] { "ru-RU", "en-US" }, SettingsNormalizer.Normalize(s).Recognition.LanguageCodes);
+    }
+
+    [Fact]
+    public void Normalize_MicrophoneDeviceName_TrimsAndCapsAt256()
+    {
+        var s = new AppSettings { MicrophoneDeviceId = "id", MicrophoneDeviceName = "  Гарнитура  " };
+        Assert.Equal("Гарнитура", SettingsNormalizer.Normalize(s).MicrophoneDeviceName);
+
+        s.MicrophoneDeviceName = new string('я', 300);
+        var name = SettingsNormalizer.Normalize(s).MicrophoneDeviceName;
+        Assert.Equal(256, SettingsNormalizer.MaxDeviceNameLength);
+        Assert.Equal(256, name!.Length);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void Normalize_BlankMicrophoneDeviceName_BecomesNull(string? input)
+    {
+        var s = new AppSettings { MicrophoneDeviceId = "id", MicrophoneDeviceName = input };
+        Assert.Null(SettingsNormalizer.Normalize(s).MicrophoneDeviceName);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void Normalize_MicrophoneDeviceNameWithoutId_IsCleared(string? id)
+    {
+        // Имя без идентификатора бессмысленно: «по умолчанию» очищает оба значения.
+        var s = new AppSettings { MicrophoneDeviceId = id, MicrophoneDeviceName = "Гарнитура" };
+        var n = SettingsNormalizer.Normalize(s);
+        Assert.Null(n.MicrophoneDeviceId);
+        Assert.Null(n.MicrophoneDeviceName);
     }
 }

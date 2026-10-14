@@ -1,3 +1,4 @@
+using SaySo.Core.Diagnostics;
 using SaySo.Core.Interop;
 using Windows.Win32;
 using Windows.Win32.Foundation;
@@ -19,6 +20,7 @@ public sealed unsafe class WasapiCapture : IDisposable
     private const uint BufferFlagSilent = 0x2;    // AUDCLNT_BUFFERFLAGS_SILENT
 
     private readonly string? _deviceId;
+    private readonly string? _deviceName;
     private readonly Action<ReadOnlySpan<byte>> _onData;
     private readonly Action<MicrophoneException>? _onError;
     private readonly TaskCompletionSource _started = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -27,9 +29,14 @@ public sealed unsafe class WasapiCapture : IDisposable
     private Thread? _thread;
     private nint _stopEvent;
 
-    public WasapiCapture(string? deviceId, Action<ReadOnlySpan<byte>> onData, Action<MicrophoneException>? onError = null)
+    /// <param name="deviceName">
+    /// Понятное имя выбранного микрофона: если устройства с <paramref name="deviceId"/> нет (например, USB-гарнитура
+    /// в другом порту получила новый идентификатор), ищется активное устройство с тем же именем.
+    /// </param>
+    public WasapiCapture(string? deviceId, Action<ReadOnlySpan<byte>> onData, Action<MicrophoneException>? onError = null, string? deviceName = null)
     {
         _deviceId = deviceId;
+        _deviceName = deviceName;
         _onData = onData;
         _onError = onError;
     }
@@ -76,7 +83,7 @@ public sealed unsafe class WasapiCapture : IDisposable
         try
         {
             enumerator = WasapiDevices.CreateEnumerator();
-            device = OpenDevice(enumerator, _deviceId);
+            device = OpenDevice(enumerator, _deviceId, _deviceName);
             var iidClient = IAudioClient.IID_Guid;
             WasapiDevices.Check(device->ActivateHr(&iidClient, CLSCTX.CLSCTX_ALL, (void**)&client), "IMMDevice.Activate");
 
@@ -195,29 +202,81 @@ public sealed unsafe class WasapiCapture : IDisposable
         }
     }
 
-    private static IMMDevice* OpenDevice(IMMDeviceEnumerator* enumerator, string? deviceId)
+    private static IMMDevice* OpenDevice(IMMDeviceEnumerator* enumerator, string? deviceId, string? deviceName)
     {
         IMMDevice* device = null;
         if (!string.IsNullOrEmpty(deviceId))
         {
-            fixed (char* id = deviceId)
+            device = OpenActiveById(enumerator, deviceId);
+            if (device != null)
             {
-                if (enumerator->GetDeviceHr(id, &device).Succeeded && device != null)
-                {
-                    DEVICE_STATE state;
-                    if (device->GetStateHr(&state).Succeeded && state == DEVICE_STATE.DEVICE_STATE_ACTIVE)
-                    {
-                        return device;
-                    }
-
-                    device->Release();
-                    device = null;
-                }
+                return device;
             }
-            // Выбранного устройства нет — работаем с микрофоном по умолчанию.
+        }
+
+        if (!string.IsNullOrEmpty(deviceId) || !string.IsNullOrWhiteSpace(deviceName))
+        {
+            // Выбранного по идентификатору устройства нет: ищем активное с тем же именем (другой порт USB).
+            device = OpenByName(enumerator, deviceId, deviceName);
+            if (device != null)
+            {
+                return device;
+            }
+
+            Log.Info(string.IsNullOrWhiteSpace(deviceName)
+                ? "Выбранный микрофон недоступен — используется микрофон по умолчанию"
+                : $"Выбранный микрофон недоступен — используется микрофон по умолчанию (сохранён: «{deviceName.Trim()}»)");
         }
 
         WasapiDevices.Check(enumerator->GetDefaultAudioEndpointHr(EDataFlow.eCapture, ERole.eConsole, &device), "GetDefaultAudioEndpoint");
         return device;
+    }
+
+    private static IMMDevice* OpenActiveById(IMMDeviceEnumerator* enumerator, string deviceId)
+    {
+        IMMDevice* device = null;
+        fixed (char* id = deviceId)
+        {
+            if (enumerator->GetDeviceHr(id, &device).Failed || device == null)
+            {
+                return null;
+            }
+        }
+
+        DEVICE_STATE state;
+        if (device->GetStateHr(&state).Succeeded && state == DEVICE_STATE.DEVICE_STATE_ACTIVE)
+        {
+            return device;
+        }
+
+        device->Release();
+        return null;
+    }
+
+    private static IMMDevice* OpenByName(IMMDeviceEnumerator* enumerator, string? deviceId, string? deviceName)
+    {
+        try
+        {
+            var endpoints = WasapiDevices.ListActive(enumerator)
+                .Select(d => new CaptureEndpoint(d.Id, d.Name, true));
+            var resolution = MicrophoneSelector.Resolve(deviceId, deviceName, endpoints);
+            if (resolution.Endpoint is not { } endpoint)
+            {
+                return null;
+            }
+
+            var found = OpenActiveById(enumerator, endpoint.Id);
+            if (found != null && resolution.Match == MicrophoneMatch.ByName)
+            {
+                Log.Info($"Микрофон «{endpoint.Name}» найден по имени (идентификатор изменился)");
+            }
+
+            return found;
+        }
+        catch (MicrophoneException e)
+        {
+            Log.Error("Поиск микрофона по имени", e);
+            return null;
+        }
     }
 }
