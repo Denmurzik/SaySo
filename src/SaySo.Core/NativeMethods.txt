@@ -1,4 +1,14 @@
 CoInitializeEx
 CoUninitialize
 CoCreateInstance
+CoTaskMemFree
 IMMDeviceEnumerator
+IMMDevice
+IMMDeviceCollection
+IAudioClient
+IAudioCaptureClient
+IPropertyStore
+PropVariantClear
+PKEY_Device_FriendlyName
+WAVEFORMATEX
+DEVICE_STATE
