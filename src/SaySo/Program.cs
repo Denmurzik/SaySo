@@ -25,8 +25,22 @@ public static class Program
     private static int InstallAdminTask()
     {
         var exe = Environment.ProcessPath!;
-        new AutostartManager().Set(false, exe); // автозапуск переходит к Планировщику
-        return AdminTask.Install(exe);
+        var code = AdminTask.Install(exe);
+        if (code != 0)
+        {
+            return code; // задача не создана: ключ автозапуска остаётся, иначе SaySo не стартовал бы при входе
+        }
+
+        try
+        {
+            new AutostartManager().Set(false, exe); // автозапуск переходит к Планировщику
+        }
+        catch (Exception e) when (e is UnauthorizedAccessException or IOException or System.Security.SecurityException)
+        {
+            // задача уже установлена; лишний ключ Run безвреден: второй экземпляр завершится по мьютексу
+        }
+
+        return 0;
     }
 
     private static int RemoveAdminTask() =>

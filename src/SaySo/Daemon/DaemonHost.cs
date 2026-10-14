@@ -421,7 +421,16 @@ internal sealed class DaemonHost : IDisposable
         switch (message)
         {
             case IpcProtocol.ReloadSettings:
-                _settings = _settingsStore.Load();
+                if (_settingsStore.TryLoad(out var reloaded))
+                {
+                    _settings = reloaded;
+                }
+                else
+                {
+                    // Файл временно занят: откат на умолчания сбросил бы горячую клавишу и пересоздал выключенный автозапуск.
+                    Log.Info("settings.json не прочитан — остаются прежние настройки");
+                }
+
                 _engines.ResetKeyPauses(); // настройки изменены пользователем: ключ мог быть исправлен, а VPN включён
                 _ipcSuspended = false; // окно настроек закончило запись комбинации (или умерло, не прислав Resume)
                 if (_hotkey is null)

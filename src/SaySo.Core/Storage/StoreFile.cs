@@ -2,6 +2,15 @@ using SaySo.Core.Diagnostics;
 
 namespace SaySo.Core.Storage;
 
+internal enum FileReadStatus
+{
+    Ok,
+    Missing,
+
+    /// <summary>Файл есть, но прочитать его не удалось (блокировка, права).</summary>
+    Failed,
+}
+
 /// <summary>Общая политика чтения файлов данных: повтор при блокировке, карантин повреждённых файлов.</summary>
 internal static class StoreFile
 {
@@ -14,22 +23,38 @@ internal static class StoreFile
     /// </summary>
     public static byte[]? TryReadAllBytes(string path, string store)
     {
+        Read(path, store, out var bytes);
+        return bytes;
+    }
+
+    /// <summary>То же, но различает «файла нет» и «файл есть, а прочитать не удалось» (bytes == null в обоих случаях).</summary>
+    public static FileReadStatus Read(string path, string store, out byte[]? bytes)
+    {
         for (var attempt = 1; ; attempt++)
         {
             try
             {
-                return File.Exists(path) ? File.ReadAllBytes(path) : null;
+                if (!File.Exists(path))
+                {
+                    bytes = null;
+                    return FileReadStatus.Missing;
+                }
+
+                bytes = File.ReadAllBytes(path);
+                return FileReadStatus.Ok;
             }
             catch (Exception e) when (e is FileNotFoundException or DirectoryNotFoundException)
             {
-                return null;
+                bytes = null;
+                return FileReadStatus.Missing;
             }
             catch (Exception e) when (e is IOException or UnauthorizedAccessException)
             {
                 if (attempt >= Attempts)
                 {
                     Log.Error(store, e);
-                    return null;
+                    bytes = null;
+                    return FileReadStatus.Failed;
                 }
 
                 Thread.Sleep(RetryDelayMs);

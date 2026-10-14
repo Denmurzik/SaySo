@@ -199,4 +199,45 @@ public class SettingsStoreTests
         Assert.Null(n.MicrophoneDeviceId);
         Assert.Null(n.MicrophoneDeviceName);
     }
+
+    [Fact]
+    public void TryLoad_FileLocked_ReportsFailure_SoCallerCanKeepCurrentSettings()
+    {
+        using var dir = new TempDir();
+        var paths = new AppPaths(dir.Path);
+        var store = new SettingsStore(paths);
+        var s = store.Load();
+        s.Hotkey.Keys = [0xA2, 0x5B];
+        store.Save(s);
+
+        using (new HeldFile(paths.SettingsFile))
+        {
+            Assert.False(store.TryLoad(out var fallback));
+            Assert.Equal(new[] { 0xA3 }, fallback.Hotkey.Keys); // умолчания: применять их нельзя
+        }
+
+        Assert.True(store.TryLoad(out var loaded));
+        Assert.Equal(new[] { 0xA2, 0x5B }, loaded.Hotkey.Keys);
+    }
+
+    [Fact]
+    public void TryLoad_MissingFile_IsSuccess_WithDefaults()
+    {
+        using var dir = new TempDir();
+
+        Assert.True(new SettingsStore(new AppPaths(dir.Path)).TryLoad(out var s));
+        Assert.Equal(300, s.Hotkey.TapThresholdMs);
+    }
+
+    [Fact]
+    public void TryLoad_CorruptJson_IsSuccess_WithDefaults_AndBackup()
+    {
+        using var dir = new TempDir();
+        var paths = new AppPaths(dir.Path);
+        File.WriteAllText(paths.SettingsFile, "{ это не json");
+
+        Assert.True(new SettingsStore(paths).TryLoad(out var s));
+        Assert.Equal(300, s.Hotkey.TapThresholdMs);
+        Assert.True(File.Exists(paths.SettingsFile + ".bad"));
+    }
 }
