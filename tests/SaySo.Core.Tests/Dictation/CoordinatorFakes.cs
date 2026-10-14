@@ -47,7 +47,17 @@ internal sealed class FakeOverlay : IDictationOverlay
 
     public void ShowRecording() => Calls.Add("recording");
 
-    public void ShowProcessing() => Calls.Add("processing");
+    public bool ThrowOnProcessing { get; set; }
+
+    public void ShowProcessing()
+    {
+        if (ThrowOnProcessing)
+        {
+            throw new InvalidOperationException("overlay");
+        }
+
+        Calls.Add("processing");
+    }
 
     public void ShowMessage(string text, OverlayTone tone) => Calls.Add($"message:{tone}:{text}");
 
@@ -62,9 +72,16 @@ internal sealed class FakeOutput : ITextOutput
 
     public TaskCompletionSource? Gate { get; set; }
 
+    public Exception? Throw { get; set; }
+
     public async Task<InsertOutcome> InsertAsync(string text, IReadOnlyCollection<int> keysToRelease)
     {
         Texts.Add(text);
+        if (Throw is not null)
+        {
+            throw Throw;
+        }
+
         if (Gate is not null)
         {
             await Gate.Task;

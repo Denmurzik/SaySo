@@ -43,7 +43,7 @@ public sealed class DictationCoordinator(
     public Task HandleAsync(HotkeyAction action) => action switch
     {
         HotkeyAction.StartRecording => StartAsync(),
-        HotkeyAction.StopRecording => StopAsync(auto: false),
+        HotkeyAction.StopRecording => StopAsync(_run, auto: false),
         HotkeyAction.Cancel => CancelAsync(),
         _ => Task.CompletedTask,
     };
@@ -63,34 +63,54 @@ public sealed class DictationCoordinator(
     private async Task StartCoreAsync()
     {
         var run = pipeline.Begin();
-        var source = audio(run.PushAudio, e => postToMain(() => OnMicrophoneError(e)));
         _run = run;
-        _source = source;
+        IAudioSource? source = null;
+        string? failure = null;
         try
         {
+            source = audio(run.PushAudio, e => postToMain(() => OnMicrophoneError(run, e)));
+            _source = source;
             await source.StartAsync();
         }
         catch (MicrophoneException e)
         {
             Log.Info($"Микрофон: {e.Kind} (0x{e.NativeError:X8})");
-            source.Dispose();
-            _source = null;
-            _run = null;
-            await run.DisposeAsync();
-            State = DictationState.Idle;
-            Fail(e.UserMessage);
-            resetHotkey();
+            failure = e.UserMessage;
+        }
+        catch (Exception e)
+        {
+            Log.Error("Запуск записи", e);
+            failure = "Не удалось начать запись — подробности в журнале";
+        }
+
+        if (failure is not null)
+        {
+            // Откат: сначала состояние и реакция, потом освобождение ресурсов.
+            if (ReferenceEquals(run, _run))
+            {
+                _source = null;
+                _run = null;
+                State = DictationState.Idle;
+                Fail(failure);
+                resetHotkey();
+            }
+
+            source?.Dispose();
+            await DisposeRunAsync(run);
             return;
         }
 
         // Реакция (плашка, трей, звук) — вместе со стартом движка: короткие сочетания клавиш остаются тихими.
-        _engineTimer = scheduler.Schedule(EngineStartDelay, OnEngineStartDelayElapsed);
-        _autoStopTimer = scheduler.Schedule(AutoStopAfter, () => _ = StopAsync(auto: true));
+        if (ReferenceEquals(run, _run))
+        {
+            _engineTimer = scheduler.Schedule(EngineStartDelay, () => OnEngineStartDelayElapsed(run));
+            _autoStopTimer = scheduler.Schedule(AutoStopAfter, () => _ = StopAsync(run, auto: true));
+        }
     }
 
-    private void OnEngineStartDelayElapsed()
+    private void OnEngineStartDelayElapsed(DictationRun run)
     {
-        if (State != DictationState.Recording || _run is not { } run)
+        if (State != DictationState.Recording || !ReferenceEquals(run, _run))
         {
             return;
         }
@@ -101,9 +121,9 @@ public sealed class DictationCoordinator(
         PlaySound(SoundKind.Start);
     }
 
-    private async Task StopAsync(bool auto)
+    private async Task StopAsync(DictationRun? expected, bool auto)
     {
-        if (State != DictationState.Recording)
+        if (State != DictationState.Recording || expected is null || !ReferenceEquals(expected, _run))
         {
             return;
         }
@@ -113,24 +133,31 @@ public sealed class DictationCoordinator(
             await starting;
         }
 
-        if (State != DictationState.Recording || _run is not { } run)
+        if (State != DictationState.Recording || !ReferenceEquals(expected, _run))
         {
             return;
         }
 
+        var run = expected;
         State = DictationState.Finishing;
-        StopCapture();
-        run.StartPrimary();
-        if (auto)
-        {
-            PlaySound(SoundKind.Error); // предупреждение: достигнут лимит длины реплики
-        }
-
-        overlay.ShowProcessing();
-        feedback.SetTray(TrayState.Idle);
         var failed = false;
         try
         {
+            StopCapture();
+
+            // Слишком короткая запись не тратит запрос к API: сессию движка открываем, только если есть что распознавать.
+            if (AudioFormat.BytesToMilliseconds(run.RecordedBytes) >= DictationPipeline.MinSpeechMs)
+            {
+                run.StartPrimary();
+            }
+
+            if (auto)
+            {
+                PlaySound(SoundKind.Error); // предупреждение: достигнут лимит длины реплики
+            }
+
+            overlay.ShowProcessing();
+            feedback.SetTray(TrayState.Idle);
             var result = await run.FinishAsync(CancellationToken.None);
             if (result.IsEmpty)
             {
@@ -138,7 +165,15 @@ public sealed class DictationCoordinator(
                 return;
             }
 
-            history.Add(new HistoryEntry(time.GetUtcNow(), result.Text, result.Engine));
+            try
+            {
+                history.Add(new HistoryEntry(time.GetUtcNow(), result.Text, result.Engine));
+            }
+            catch (Exception e)
+            {
+                Log.Error("История", e); // сбой записи истории не должен терять продиктованный текст
+            }
+
             var outcome = await output.InsertAsync(result.Text, settings().Hotkey.Keys);
             Log.Info($"Диктовка: движок={result.Engine}, вставка={outcome}, символов={result.Text.Length}");
             switch (outcome)
@@ -174,11 +209,12 @@ public sealed class DictationCoordinator(
             Log.Info($"Диктовка не удалась: основной={e.PrimaryError}, резерв={e.FallbackError}");
             failed = Fail(e.UserMessage);
         }
-        catch (Exception e) when (e is not OperationCanceledException)
+        catch (Exception e)
         {
-            // Неожиданный сбой (история, вставка): сессия всё равно должна закрыться, а не зависнуть.
+            // Неожиданный сбой (вставка, оверлей, движок): сессия всё равно должна закрыться, а не зависнуть.
             Log.Error("Диктовка", e);
             failed = Fail("Ошибка диктовки — подробности в журнале");
+            await DisposeRunAsync(run);
         }
         finally
         {
@@ -196,7 +232,7 @@ public sealed class DictationCoordinator(
 
     private async Task CancelAsync()
     {
-        if (State != DictationState.Recording)
+        if (State != DictationState.Recording || _run is not { } run)
         {
             return;
         }
@@ -206,30 +242,43 @@ public sealed class DictationCoordinator(
             await starting;
         }
 
-        if (State != DictationState.Recording)
+        if (State != DictationState.Recording || !ReferenceEquals(run, _run))
         {
             return;
         }
 
+        // Сначала освобождаем главный поток для нового нажатия, закрытие сессии движка — после.
         StopCapture();
-        var run = _run;
         _run = null;
-        if (run is not null)
+        State = DictationState.Idle;
+        overlay.Hide();
+        feedback.SetTray(TrayState.Idle);
+        resetHotkey();
+        SessionEnded?.Invoke();
+        await DisposeRunAsync(run);
+    }
+
+    private void OnMicrophoneError(DictationRun run, MicrophoneException e)
+    {
+        if (State != DictationState.Recording || !ReferenceEquals(run, _run))
+        {
+            return; // ошибка прошлой сессии или запись уже завершается
+        }
+
+        Log.Info($"Микрофон во время записи: {e.Kind}");
+        _ = StopAsync(run, auto: false);
+    }
+
+    private static async Task DisposeRunAsync(DictationRun run)
+    {
+        try
         {
             await run.DisposeAsync();
         }
-
-        overlay.Hide();
-        feedback.SetTray(TrayState.Idle);
-        State = DictationState.Idle;
-        resetHotkey();
-        SessionEnded?.Invoke();
-    }
-
-    private void OnMicrophoneError(MicrophoneException e)
-    {
-        Log.Info($"Микрофон во время записи: {e.Kind}");
-        _ = StopAsync(auto: false);
+        catch (Exception e)
+        {
+            Log.Error("Закрытие реплики", e);
+        }
     }
 
     private void StopCapture()
@@ -240,9 +289,15 @@ public sealed class DictationCoordinator(
         _autoStopTimer = null;
         if (_source is { } source)
         {
-            source.Stop();
-            source.Dispose();
             _source = null;
+            try
+            {
+                source.Stop();
+            }
+            finally
+            {
+                source.Dispose();
+            }
         }
     }
 
