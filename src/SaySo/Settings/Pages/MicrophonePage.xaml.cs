@@ -14,6 +14,7 @@ public sealed partial class MicrophonePage : UserControl
     private WasapiCapture? _capture;
     private float _level;
     private bool _loading = true;
+    private int _shownIndex = -1; // пункт, выбранный программно при открытии страницы
 
     internal MicrophonePage(SettingsModel model)
     {
@@ -44,44 +45,63 @@ public sealed partial class MicrophonePage : UserControl
             devices = [];
         }
 
-        DevicesBox.Items.Add(new ComboBoxItem { Content = "Системный микрофон по умолчанию", Tag = null });
-        var selected = 0;
+        DevicesBox.Items.Add(new ComboBoxItem { Content = "Как в Windows (по умолчанию)", Tag = DeviceChoice.Default });
         foreach (var device in devices)
         {
-            DevicesBox.Items.Add(new ComboBoxItem { Content = device.Name, Tag = device.Id });
-            if (device.Id == _model.Settings.MicrophoneDeviceId)
-            {
-                selected = DevicesBox.Items.Count - 1;
-            }
+            DevicesBox.Items.Add(new ComboBoxItem { Content = device.Name, Tag = new DeviceChoice(device.Id, device.Name) });
         }
 
-        // Сохранённого устройства нет в списке (отключено): показываем его отдельным пунктом, чтобы выбор
-        // не сбросился на «по умолчанию» сам собой и пользователь видел, что именно сохранено.
-        if (_model.Settings.MicrophoneDeviceId is { } savedId && selected == 0)
+        // Показываем то устройство, которое демон реально возьмёт: по идентификатору или (другой порт USB) по имени.
+        // Если сохранённый микрофон отключён — отдельный пункт «<имя> — не подключён»: выбор виден и сам не сбрасывается.
+        var settings = _model.Settings;
+        var resolution = MicrophoneSelector.Resolve(settings.MicrophoneDeviceId, settings.MicrophoneDeviceName,
+            devices.Select(d => new CaptureEndpoint(d.Id, d.Name, true)));
+        var selected = 0;
+        switch (resolution.Match)
         {
-            DevicesBox.Items.Add(new ComboBoxItem { Content = "Сохранённый микрофон (сейчас недоступен)", Tag = savedId });
-            selected = DevicesBox.Items.Count - 1;
+            case MicrophoneMatch.ById or MicrophoneMatch.ByName:
+                selected = devices.ToList().FindIndex(d => d.Id == resolution.Endpoint!.Id) + 1;
+                break;
+            case MicrophoneMatch.Fallback:
+                DevicesBox.Items.Add(new ComboBoxItem
+                {
+                    Content = string.IsNullOrWhiteSpace(settings.MicrophoneDeviceName)
+                        ? "Сохранённый микрофон (сейчас недоступен)"
+                        : $"{settings.MicrophoneDeviceName} — не подключён",
+                    Tag = new DeviceChoice(settings.MicrophoneDeviceId, settings.MicrophoneDeviceName),
+                });
+                selected = DevicesBox.Items.Count - 1;
+                break;
         }
 
+        _shownIndex = selected;
         DevicesBox.SelectedIndex = selected;
         _loading = false;
     }
 
     private void OnDeviceChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (_loading || DevicesBox.SelectedItem is not ComboBoxItem item)
+        if (_loading || DevicesBox.SelectedItem is not ComboBoxItem { Tag: DeviceChoice choice })
         {
             return;
         }
 
-        // SelectionChanged приходит и асинхронно после присвоения SelectedIndex при открытии: то же значение — не изменение.
-        var deviceId = item.Tag as string;
-        if (deviceId == _model.Settings.MicrophoneDeviceId)
+        // SelectionChanged приходит и асинхронно после присвоения SelectedIndex при открытии: показанный пункт
+        // (в т.ч. найденный по имени) — не выбор пользователя, сохранённое не трогаем.
+        if (DevicesBox.SelectedIndex == _shownIndex)
         {
             return;
         }
 
-        _model.Settings.MicrophoneDeviceId = deviceId;
+        _shownIndex = -1;
+        if (choice.Id == _model.Settings.MicrophoneDeviceId && choice.Name == _model.Settings.MicrophoneDeviceName)
+        {
+            return;
+        }
+
+        // Выбор запоминается вместе с именем; «как в Windows» очищает оба значения.
+        _model.Settings.MicrophoneDeviceId = choice.Id;
+        _model.Settings.MicrophoneDeviceName = choice.Name;
         var saved = _model.SaveSettings();
         if (TestButton.IsChecked == true)
         {
@@ -126,7 +146,8 @@ public sealed partial class MicrophonePage : UserControl
 
                 ShowError(e);
                 TestButton.IsChecked = false;
-            }));
+            }),
+            _model.Settings.MicrophoneDeviceName);
         _capture = capture;
         try
         {
@@ -189,5 +210,11 @@ public sealed partial class MicrophonePage : UserControl
         {
             Log.Error("MicrophonePage.OpenPrivacy", ex);
         }
+    }
+
+    /// <summary>Выбор устройства в списке: идентификатор и имя сохраняются вместе (оба null — как в Windows).</summary>
+    private sealed record DeviceChoice(string? Id, string? Name)
+    {
+        public static DeviceChoice Default { get; } = new(null, null);
     }
 }
