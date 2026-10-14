@@ -1,6 +1,7 @@
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using SaySo.Core;
+using SaySo.Core.Platform;
 
 namespace SaySo;
 
@@ -13,16 +14,12 @@ public static class Program
         return options.Mode switch
         {
             LaunchMode.Settings => RunSettings(),
-            _ => RunDaemon(),
+            LaunchMode.InstallAdminTask => AdminTask.Install(Environment.ProcessPath!),
+            LaunchMode.RemoveAdminTask => AdminTask.Remove(),
+            LaunchMode.Simulate => 2, // задача 16
+            // Демон никогда не касается типов XAML — иначе в процесс загрузится Microsoft.UI.Xaml.dll.
+            _ => Daemon.DaemonHost.Run(),
         };
-    }
-
-    // Демон никогда не касается типов XAML — иначе в процесс загрузится Microsoft.UI.Xaml.dll.
-    private static int RunDaemon()
-    {
-        // Заглушка до задачи 13: процесс просто живёт (проверка, что XAML не загружается).
-        Thread.Sleep(Timeout.Infinite);
-        return 0;
     }
 
     private static int RunSettings()

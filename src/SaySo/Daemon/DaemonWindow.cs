@@ -1,0 +1,171 @@
+using SaySo.Core.Diagnostics;
+using SaySo.Core.Hotkeys;
+using SaySo.Core.Interop;
+using SaySo.Core.Platform;
+
+namespace SaySo.Daemon;
+
+/// <summary>
+/// Скрытое окно верхнего уровня демона: IPC, обратные вызовы трея, хука и таймеров, продолжения async.
+/// Никогда не показывается; верхнего уровня — ради TaskbarCreated и меню трея.
+/// </summary>
+internal sealed class DaemonWindow : IDisposable
+{
+    public const uint SyncMessage = Native.WM_APP + 1;
+    public const uint HotkeyMessage = Native.WM_APP + 2;
+    public const uint TrayMessage = Native.WM_APP + 3;
+
+    private readonly MessageWindow _window;
+    private readonly Dictionary<uint, string> _ipc = [];
+    private readonly Dictionary<nuint, (Action Callback, bool Repeat)> _timers = [];
+    private readonly uint _taskbarCreated;
+    private nuint _nextTimerId = 100;
+
+    public DaemonWindow()
+    {
+        _window = new MessageWindow(IpcProtocol.WindowClass, OnMessage, messageOnly: false);
+        Sync = new Win32SynchronizationContext(_window.Handle, SyncMessage);
+        foreach (var name in IpcProtocol.AllMessages)
+        {
+            var id = Native.RegisterWindowMessageW(name);
+            _ipc[id] = name;
+            AllowFromLowerIntegrity(id);
+        }
+
+        _taskbarCreated = Native.RegisterWindowMessageW("TaskbarCreated");
+        AllowFromLowerIntegrity(_taskbarCreated);
+        Native.WTSRegisterSessionNotification(_window.Handle, Native.NOTIFY_FOR_THIS_SESSION);
+    }
+
+    public event Action<HotkeyAction>? HotkeyPressed;
+
+    /// <summary>Событие значка трея (LOWORD(lParam) в режиме NOTIFYICON_VERSION_4).</summary>
+    public event Action<uint>? TrayEvent;
+
+    public event Action<string>? IpcMessage;
+
+    public event Action? TaskbarCreated;
+
+    /// <summary>true — сеанс заблокирован, false — разблокирован.</summary>
+    public event Action<bool>? SessionLockChanged;
+
+    public event Action? ThemeChanged;
+
+    /// <summary>
+    /// WM_CLOSE (например, <c>taskkill</c> без /F): штатное завершение, как по IPC-сообщению Quit.
+    /// Без обработчика окно демона уничтожилось бы, а процесс с хуком продолжил бы жить без IPC-окна.
+    /// </summary>
+    public event Action? CloseRequested;
+
+    public nint Handle => _window.Handle;
+
+    public Win32SynchronizationContext Sync { get; }
+
+    public IDisposable SetTimer(TimeSpan due, Action callback, bool repeat = false)
+    {
+        var id = _nextTimerId++;
+        _timers[id] = (callback, repeat);
+        nuint result;
+        unsafe
+        {
+            result = Native.SetTimer(_window.Handle, id, (uint)Math.Max(1, due.TotalMilliseconds), null);
+        }
+
+        if (result == 0)
+        {
+            _timers.Remove(id);
+            Log.Info("SetTimer не удался — таймер не запущен");
+        }
+
+        return new TimerHandle(this, id);
+    }
+
+    public void Dispose()
+    {
+        foreach (var id in _timers.Keys.ToList())
+        {
+            KillTimer(id);
+        }
+
+        Native.WTSUnRegisterSessionNotification(_window.Handle);
+        _window.Dispose();
+    }
+
+    private unsafe void AllowFromLowerIntegrity(uint message) =>
+        // Если демон запущен от администратора, без этого UIPI отбросит сообщения из окна настроек и Проводника.
+        Native.ChangeWindowMessageFilterEx(_window.Handle, message, Native.MSGFLT_ALLOW, null);
+
+    private void KillTimer(nuint id)
+    {
+        if (_window.Handle != 0)
+        {
+            Native.KillTimer(_window.Handle, id);
+        }
+
+        _timers.Remove(id);
+    }
+
+    private nint? OnMessage(uint msg, nuint wParam, nint lParam)
+    {
+        switch (msg)
+        {
+            case SyncMessage:
+                Sync.Drain();
+                return 0;
+            case HotkeyMessage:
+                HotkeyPressed?.Invoke((HotkeyAction)wParam);
+                return 0;
+            case TrayMessage:
+                TrayEvent?.Invoke((uint)(lParam & 0xFFFF));
+                return 0;
+            case Native.WM_CLOSE:
+                CloseRequested?.Invoke();
+                return 0;
+            case Native.WM_TIMER:
+                if (_timers.TryGetValue(wParam, out var timer))
+                {
+                    if (!timer.Repeat)
+                    {
+                        KillTimer(wParam);
+                    }
+
+                    timer.Callback();
+                }
+
+                return 0;
+            case Native.WM_WTSSESSION_CHANGE:
+                if (wParam is Native.WTS_SESSION_LOCK or Native.WTS_SESSION_UNLOCK)
+                {
+                    SessionLockChanged?.Invoke(wParam == Native.WTS_SESSION_LOCK);
+                }
+
+                return 0;
+            case Native.WM_SETTINGCHANGE:
+                if (lParam != 0 && System.Runtime.InteropServices.Marshal.PtrToStringUni(lParam) == "ImmersiveColorSet")
+                {
+                    ThemeChanged?.Invoke();
+                }
+
+                return null;
+        }
+
+        if (msg == _taskbarCreated)
+        {
+            TaskbarCreated?.Invoke();
+            return 0;
+        }
+
+        if (_ipc.TryGetValue(msg, out var name))
+        {
+            IpcMessage?.Invoke(name);
+            return 0;
+        }
+
+        return null;
+    }
+
+    private sealed class TimerHandle(DaemonWindow owner, nuint id) : IDisposable
+    {
+        public void Dispose() => owner.KillTimer(id);
+    }
+}
