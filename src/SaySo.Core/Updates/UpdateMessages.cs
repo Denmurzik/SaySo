@@ -8,13 +8,19 @@ public static class UpdateMessages
 {
     public const string BalloonTitle = "SaySo";
 
-    public static string Balloon(Version version) => $"Доступна версия {Format(version)} — нажмите, чтобы обновить";
+    /// <param name="manual">Поставить из приложения нельзя (администратор, неустановленная копия, нет Setup в релизе): только страница релиза.</param>
+    public static string Balloon(Version version, bool manual = false) => manual
+        ? Available(version, manual: true)
+        : $"Доступна версия {Format(version)} — нажмите, чтобы обновить";
 
-    public static string MenuItem(Version version) => $"Обновить до {Format(version)}";
+    public static string MenuItem(Version version, bool manual = false) =>
+        manual ? $"Страница релиза {Format(version)}" : $"Обновить до {Format(version)}";
 
     public const string UpToDate = Overlay.OverlayMessages.UpdateUpToDate;
 
-    public static string Available(Version version) => $"Доступна версия {Format(version)}";
+    public static string Available(Version version, bool manual = false) => manual
+        ? $"Доступна версия {Format(version)} — скачайте установщик со страницы релиза"
+        : $"Доступна версия {Format(version)}";
 
     /// <summary>Текст ошибки ручной проверки на странице «О программе».</summary>
     public static string CheckFailed(UpdateFailure failure) => failure switch

@@ -371,7 +371,7 @@ internal sealed class DaemonHost : IDisposable
         var items = new List<TrayMenuItem>();
         if (_updates.Pending is { } update)
         {
-            items.Add(new TrayMenuItem(CmdUpdate, UpdateMessages.MenuItem(update.Version)));
+            items.Add(new TrayMenuItem(CmdUpdate, UpdateMessages.MenuItem(update.Version, _updates.PendingNeedsManualInstall)));
             items.Add(TrayMenuItem.Separator);
         }
 

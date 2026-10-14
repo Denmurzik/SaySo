@@ -49,6 +49,17 @@ public class UpdateMessagesTests
     }
 
     [Fact]
+    public void ManualVariants_PointToTheReleasePage()
+    {
+        var version = new Version(0, 2, 0);
+
+        Assert.Equal("Доступна версия 0.2.0 — скачайте установщик со страницы релиза", UpdateMessages.Balloon(version, manual: true));
+        Assert.Equal("Доступна версия 0.2.0 — скачайте установщик со страницы релиза", UpdateMessages.Available(version, manual: true));
+        Assert.Equal("Страница релиза 0.2.0", UpdateMessages.MenuItem(version, manual: true));
+        Assert.True(UpdateMessages.Balloon(new Version(999, 999, 999), manual: true).Length < 256);
+    }
+
+    [Fact]
     public void EveryCheckFailure_HasAReadableRussianText()
     {
         foreach (var failure in Enum.GetValues<UpdateFailure>())

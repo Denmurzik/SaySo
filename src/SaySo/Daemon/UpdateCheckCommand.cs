@@ -1,5 +1,7 @@
 using System.Text;
 using SaySo.Core;
+using SaySo.Core.Diagnostics;
+using SaySo.Core.Storage;
 using SaySo.Core.Updates;
 
 namespace SaySo.Daemon;
@@ -7,6 +9,8 @@ namespace SaySo.Daemon;
 /// <summary>
 /// <c>SaySo.exe --check-updates [--out файл]</c>: один запрос о последнем релизе тем же кодом, что у демона, и итог одной строкой.
 /// Для проверки AOT-сборки (разбор JSON, HttpClient, версия сборки) без демона и окон; состояние (update-state.json) не пишет.
+/// SaySo.exe — приложение без консоли (WinExe): <c>Console.WriteLine</c> видно, только если вывод перенаправлен в файл или канал,
+/// поэтому в скриптах и проверках используйте <c>--out</c>.
 /// </summary>
 internal static class UpdateCheckCommand
 {
@@ -28,7 +32,16 @@ internal static class UpdateCheckCommand
 
         if (options.OutPath is { } path)
         {
-            File.WriteAllText(path, line + Environment.NewLine, new UTF8Encoding(false));
+            try
+            {
+                File.WriteAllText(path, line + Environment.NewLine, new UTF8Encoding(false));
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+            {
+                Log.FilePath ??= Path.Combine(AppPaths.Default.Root, "sayso.log");
+                Log.Error("--check-updates: не удалось записать отчёт", e);
+                return 3;
+            }
         }
         else
         {

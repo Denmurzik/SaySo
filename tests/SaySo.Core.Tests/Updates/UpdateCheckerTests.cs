@@ -106,7 +106,7 @@ public class ReleaseParserTests
     [Fact]
     public void Parse_ReleaseWithoutAssetsArray_IsNotInstallable()
     {
-        var release = Parse("""{"tag_name":"v0.2.0","html_url":"https://github.com/x/y/releases/tag/v0.2.0","body":"","draft":false,"prerelease":false}""")!;
+        var release = Parse("""{"tag_name":"v0.2.0","html_url":"https://github.com/Denmurzik/SaySo/releases/tag/v0.2.0","body":"","draft":false,"prerelease":false}""")!;
 
         Assert.False(release.IsInstallable);
     }
@@ -137,7 +137,40 @@ public class ReleaseParserTests
 
     [Fact]
     public void Parse_NonHttpsReleasePage_MeansNoUsableRelease() =>
-        Assert.Null(Parse(ReleaseJson("v0.2.0", "0.2.0", htmlUrl: "http://github.com/x/TAG")));
+        Assert.Null(Parse(ReleaseJson("v0.2.0", "0.2.0", htmlUrl: "http://github.com/Denmurzik/SaySo/releases/tag/TAG")));
+
+    [Theory]
+    [InlineData("https://example.test/Denmurzik/SaySo/releases/tag/TAG")]
+    [InlineData("https://github.com.evil.test/Denmurzik/SaySo/releases/tag/TAG")]
+    [InlineData("https://evil.test/github.com/Denmurzik/SaySo/releases/tag/TAG")]
+    [InlineData("https://github.com/other/repo/releases/tag/TAG")]
+    [InlineData("https://github.com/Denmurzik/SaySo/issues/1")]
+    [InlineData("https://github.com/Denmurzik/SaySo-fork/releases/tag/TAG")]
+    [InlineData("https://github.com:8443/Denmurzik/SaySo/releases/tag/TAG")]
+    [InlineData("https://user@github.com/Denmurzik/SaySo/releases/tag/TAG")]
+    public void Parse_ReleasePageOutsideTheAllowList_MeansNoUsableRelease(string htmlUrl) =>
+        Assert.Null(Parse(ReleaseJson("v0.2.0", "0.2.0", htmlUrl: htmlUrl)));
+
+    [Theory]
+    [InlineData("https://example.test/dl/SaySo-Setup-0.2.0.exe")]
+    [InlineData("https://objects.githubusercontent.com/Denmurzik/SaySo/releases/download/v0.2.0/SaySo-Setup-0.2.0.exe")]
+    [InlineData("https://github.com/evil/SaySo/releases/download/v0.2.0/SaySo-Setup-0.2.0.exe")]
+    [InlineData("https://github.com/Denmurzik/SaySo/archive/main.zip")]
+    [InlineData("https://github.com/Denmurzik/SaySo/releases/../../../evil/x/SaySo-Setup-0.2.0.exe")]
+    public void Parse_AssetOutsideTheAllowList_IsDropped(string url)
+    {
+        var release = Parse(ReleaseJson("v0.2.0", "0.2.0").Replace(SetupUrl("0.2.0"), url))!;
+        var sha = Parse(ReleaseJson("v0.2.0", "0.2.0").Replace(ShaUrl("0.2.0"), url))!;
+
+        Assert.Null(release.SetupUrl);
+        Assert.Null(sha.ShaUrl);
+        Assert.False(release.IsInstallable);
+        Assert.False(sha.IsInstallable);
+    }
+
+    [Fact]
+    public void Parse_AssetOnGitHubReleases_IsKept() =>
+        Assert.StartsWith("https://github.com/Denmurzik/SaySo/releases/download/", Parse(ReleaseJson("v0.2.0", "0.2.0"))!.SetupUrl);
 
     [Theory]
     [InlineData("latest")]
@@ -271,6 +304,20 @@ public class UpdateCheckerTests
     {
         var handler = new RoutingHandler();
         handler.Throw(UpdateChecker.LatestReleaseUrl, new HttpRequestException("нет сети"));
+
+        var result = await Check(handler);
+
+        Assert.Equal(UpdateFailure.Network, result.Failure);
+    }
+
+    [Fact]
+    public async Task ConnectionDroppedInTheMiddleOfTheBody_IsANetworkFailure()
+    {
+        var handler = new RoutingHandler();
+        handler.Route(UpdateChecker.LatestReleaseUrl, _ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StreamContent(new DroppingStream(Encoding.UTF8.GetBytes("{\"tag_name\": \"v0.2"))),
+        });
 
         var result = await Check(handler);
 

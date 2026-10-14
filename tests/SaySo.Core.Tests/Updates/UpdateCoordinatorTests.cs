@@ -97,7 +97,8 @@ public sealed class UpdateCoordinatorTests : IDisposable
     private readonly UpdateStateStore _store;
     private bool _autoEnabled = true;
     private string _exePath;
-    private IReadOnlyList<string> _programFiles = [@"C:\Program Files"];
+    private InstallHive? _installedAs = InstallHive.User; // чей ключ удаления Inno указывает на каталог exe; null — копия не установлена
+    private bool _elevated;
     private UpdateCoordinator? _coordinator;
 
     public UpdateCoordinatorTests()
@@ -105,7 +106,7 @@ public sealed class UpdateCoordinatorTests : IDisposable
         _paths = new AppPaths(Path.Combine(_temp.Path, "data"));
         _paths.EnsureRoot();
         _store = new UpdateStateStore(_paths);
-        _exePath = MakeInstall(Path.Combine(_temp.Path, "Local", "Programs", "SaySo"));
+        _exePath = Path.Combine(_temp.Path, "Local", "Programs", "SaySo", "SaySo.exe");
     }
 
     public void Dispose()
@@ -116,16 +117,9 @@ public sealed class UpdateCoordinatorTests : IDisposable
 
     private UpdateCoordinator Coordinator => _coordinator ??= new UpdateCoordinator(
         _host, _store, Installed,
-        new UpdateEnvironment(_exePath, _programFiles, Path.Combine(_temp.Path, "SaySo-Update")),
+        new UpdateEnvironment(_exePath, [@"C:\Program Files"], Path.Combine(_temp.Path, "SaySo-Update"),
+            hive => hive == _installedAs ? new InstallEntry(Path.GetDirectoryName(_exePath)) : null, _elevated),
         () => _autoEnabled, () => Client(_handler), _time);
-
-    /// <summary>Каталог «установленного» SaySo: рядом с exe лежит деинсталлятор Inno.</summary>
-    private static string MakeInstall(string dir)
-    {
-        Directory.CreateDirectory(dir);
-        File.WriteAllText(Path.Combine(dir, "unins000.exe"), "uninstaller");
-        return Path.Combine(dir, "SaySo.exe");
-    }
 
     private void ServeRelease(string version = "0.2.0", bool installable = true)
     {
@@ -477,11 +471,9 @@ public sealed class UpdateCoordinatorTests : IDisposable
     }
 
     [Fact]
-    public async Task InstallUnderProgramFiles_PassesAllUsers_SetupElevatesItself()
+    public async Task InstallRegisteredForAllUsers_PassesAllUsers_SetupElevatesItself()
     {
-        var programFiles = Path.Combine(_temp.Path, "Program Files");
-        _exePath = MakeInstall(Path.Combine(programFiles, "SaySo"));
-        _programFiles = [programFiles];
+        _installedAs = InstallHive.Machine;
         ServeRelease();
         await Coordinator.CheckNowAsync();
 
@@ -495,10 +487,8 @@ public sealed class UpdateCoordinatorTests : IDisposable
     [Fact]
     public async Task SetupWaitsForUac_ThenExitsNonZero_ShowsCancelled_KeepsRunning_AndRemovesTheDownload()
     {
-        var programFiles = Path.Combine(_temp.Path, "Program Files");
-        _exePath = MakeInstall(Path.Combine(programFiles, "SaySo"));
-        _programFiles = [programFiles];
-        _host.SetupRun = new InstallerRun(InstallerLaunchResult.Exited, 1);
+        _installedAs = InstallHive.Machine;
+        _host.SetupRun = new InstallerRun(InstallerLaunchResult.Exited, 2);
         ServeRelease();
         await Coordinator.CheckNowAsync();
 
@@ -511,6 +501,106 @@ public sealed class UpdateCoordinatorTests : IDisposable
         _host.SetupRun = new InstallerRun(InstallerLaunchResult.Exited, 0);
         await Coordinator.InstallAsync();
         Assert.Equal(2, _host.Launches.Count);
+    }
+
+    [Theory]
+    [InlineData(1, true)] // не удалось инициализировать
+    [InlineData(3, true)] // фатальная ошибка при подготовке
+    [InlineData(4, true)] // фатальная ошибка при установке
+    [InlineData(6, true)] // принудительно завершён
+    [InlineData(7, true)] // перезагрузка не удалась
+    [InlineData(8, true)]
+    [InlineData(2, false)] // отмена пользователем
+    [InlineData(5, false)] // отмена во время установки
+    [InlineData(740, false)] // прочее — как отмена
+    [InlineData(-1, false)]
+    public async Task SetupExitCodes_AreMappedToFailureOrCancel(int exitCode, bool failure)
+    {
+        _host.SetupRun = new InstallerRun(InstallerLaunchResult.Exited, exitCode);
+        ServeRelease();
+        await Coordinator.CheckNowAsync();
+
+        await Coordinator.InstallAsync();
+
+        if (failure)
+        {
+            Assert.Contains(_host.Messages, m => m.Text == OverlayMessages.UpdateInstallFailed && m.IsError);
+            Assert.DoesNotContain(_host.Messages, m => m.Text == OverlayMessages.UpdateCancelled);
+        }
+        else
+        {
+            Assert.Contains(_host.Messages, m => m.Text == OverlayMessages.UpdateCancelled && !m.IsError);
+            Assert.DoesNotContain(_host.Messages, m => m.Text == OverlayMessages.UpdateInstallFailed);
+        }
+
+        Assert.Empty(Directory.GetFiles(Path.Combine(_temp.Path, "SaySo-Update")));
+    }
+
+    // ---- процесс с правами администратора ----
+
+    [Fact]
+    public async Task ElevatedProcess_NeverDownloadsOrLaunches_OnlyOpensTheReleasePage()
+    {
+        _elevated = true;
+        _installedAs = InstallHive.Machine;
+        ServeRelease();
+        await Coordinator.CheckNowAsync();
+
+        Assert.True(Coordinator.PendingNeedsManualInstall);
+        await Coordinator.InstallAsync();
+
+        Assert.Equal("https://github.com/Denmurzik/SaySo/releases/tag/v0.2.0", Assert.Single(_host.OpenedUrls));
+        Assert.Empty(_host.Launches);
+        Assert.Equal(0, _handler.Count(SetupUrl("0.2.0")));
+        Assert.Equal(0, _handler.Count(ShaUrl("0.2.0")));
+        Assert.False(Directory.Exists(Path.Combine(_temp.Path, "SaySo-Update")));
+    }
+
+    [Fact]
+    public async Task ElevatedProcess_InstallRequestFromIpc_WithoutKnownUpdate_StillOnlyOpensThePage()
+    {
+        _elevated = true;
+        ServeRelease();
+
+        await Coordinator.InstallAsync(); // IPC InstallUpdate доступен и непривилегированным процессам
+
+        Assert.Single(_host.OpenedUrls);
+        Assert.Empty(_host.Launches);
+        Assert.Equal(0, _handler.Count(SetupUrl("0.2.0")));
+    }
+
+    [Fact]
+    public async Task ElevatedProcess_BalloonSendsToTheReleasePage()
+    {
+        _elevated = true;
+        ServeRelease();
+
+        StartAndFire();
+        await Settle(() => _host.Balloons.Count == 1);
+
+        Assert.Equal("Доступна версия 0.2.0 — скачайте установщик со страницы релиза", _host.Balloons[0]);
+    }
+
+    [Fact]
+    public async Task NormalInstalledCopy_DoesNotNeedManualInstall()
+    {
+        ServeRelease();
+        await Coordinator.CheckNowAsync();
+
+        Assert.False(Coordinator.PendingNeedsManualInstall);
+    }
+
+    [Fact]
+    public async Task NotInstalledCopy_NeedsManualInstall_AndBalloonSaysSo()
+    {
+        _installedAs = null;
+        ServeRelease();
+
+        StartAndFire();
+        await Settle(() => _host.Balloons.Count == 1);
+
+        Assert.True(Coordinator.PendingNeedsManualInstall);
+        Assert.Contains("страницы релиза", _host.Balloons[0]);
     }
 
     [Fact]
@@ -583,7 +673,7 @@ public sealed class UpdateCoordinatorTests : IDisposable
         Assert.Single(_host.Launches);
         Assert.Equal(1, _handler.Count(SetupUrl("0.2.0")));
 
-        _host.SetupRunning.SetResult(new InstallerRun(InstallerLaunchResult.Exited, 1));
+        _host.SetupRunning.SetResult(new InstallerRun(InstallerLaunchResult.Exited, 2));
         await install;
         Assert.Contains(_host.Messages, m => m.Text == OverlayMessages.UpdateCancelled);
         Assert.False(File.Exists(StagedExe));
@@ -650,7 +740,7 @@ public sealed class UpdateCoordinatorTests : IDisposable
     [Fact]
     public async Task NotAnInstalledCopy_OpensReleasePage_WithoutDownloading()
     {
-        _exePath = Path.Combine(_temp.Path, "Portable", "SaySo.exe"); // рядом нет unins000.exe
+        _installedAs = null; // ключа удаления Inno нет: портативная копия
         ServeRelease();
         await Coordinator.CheckNowAsync();
 

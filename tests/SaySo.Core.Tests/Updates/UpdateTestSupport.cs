@@ -52,11 +52,59 @@ internal sealed class UnknownLengthContent(byte[] data) : HttpContent
     }
 }
 
+/// <summary>Поток, который отдаёт начало данных и обрывается, как соединение посреди тела ответа.</summary>
+internal sealed class DroppingStream(byte[] prefix) : Stream
+{
+    private int _position;
+
+    public override bool CanRead => true;
+
+    public override bool CanSeek => false;
+
+    public override bool CanWrite => false;
+
+    public override long Length => throw new NotSupportedException();
+
+    public override long Position
+    {
+        get => throw new NotSupportedException();
+        set => throw new NotSupportedException();
+    }
+
+    public override int Read(byte[] buffer, int offset, int count) => Read(buffer.AsSpan(offset, count));
+
+    public override int Read(Span<byte> buffer)
+    {
+        if (_position >= prefix.Length)
+        {
+            throw new HttpIOException(HttpRequestError.ResponseEnded, "обрыв соединения");
+        }
+
+        var n = Math.Min(buffer.Length, prefix.Length - _position);
+        prefix.AsSpan(_position, n).CopyTo(buffer);
+        _position += n;
+        return n;
+    }
+
+    public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default) =>
+        ValueTask.FromResult(Read(buffer.Span));
+
+    public override void Flush()
+    {
+    }
+
+    public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+
+    public override void SetLength(long value) => throw new NotSupportedException();
+
+    public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+}
+
 internal static class UpdateFixtures
 {
-    public const string SetupBase = "https://example.test/dl/";
+    public const string SetupBase = "https://github.com/Denmurzik/SaySo/releases/download/";
 
-    public static string SetupUrl(string version) => $"{SetupBase}SaySo-Setup-{version}.exe";
+    public static string SetupUrl(string version) => $"{SetupBase}v{version}/SaySo-Setup-{version}.exe";
 
     public static string ShaUrl(string version) => SetupUrl(version) + ".sha256";
 
@@ -96,7 +144,7 @@ internal static class UpdateFixtures
             assets.Add(Asset($"SaySo-Setup-{version}.exe.sha256", 91, ShaUrl(version)));
         }
 
-        assets.Add(Asset($"SaySo-{version}-win-x64.zip", 123456, $"{SetupBase}SaySo-{version}-win-x64.zip"));
+        assets.Add(Asset($"SaySo-{version}-win-x64.zip", 123456, $"{SetupBase}v{version}/SaySo-{version}-win-x64.zip"));
         var bodyJson = body is null ? "null" : System.Text.Json.JsonSerializer.Serialize(body);
         return $$"""
             {

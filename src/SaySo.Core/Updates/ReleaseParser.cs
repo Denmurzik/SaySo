@@ -21,8 +21,8 @@ public static class ReleaseParser
             return null;
         }
 
-        // Страница релиза уйдёт в ShellExecute: допускаем только https.
-        if (!IsHttps(dto.HtmlUrl))
+        // Страница релиза уйдёт в оболочку, ссылки ассетов — в загрузчик: только github.com/Denmurzik/SaySo/releases/… по https.
+        if (!UpdateUrls.IsTrusted(dto.HtmlUrl))
         {
             return null;
         }
@@ -42,13 +42,10 @@ public static class ReleaseParser
             }
         }
 
-        var setupUrl = IsHttps(setup?.BrowserDownloadUrl) ? setup!.BrowserDownloadUrl : null;
-        var shaUrl = IsHttps(sha?.BrowserDownloadUrl) ? sha!.BrowserDownloadUrl : null;
+        var setupUrl = UpdateUrls.IsTrusted(setup?.BrowserDownloadUrl) ? setup!.BrowserDownloadUrl : null;
+        var shaUrl = UpdateUrls.IsTrusted(sha?.BrowserDownloadUrl) ? sha!.BrowserDownloadUrl : null;
         return new ReleaseInfo(version, dto.TagName!, dto.HtmlUrl!, Truncate(dto.Body), setupUrl, setupUrl is null ? 0 : setup!.Size, shaUrl);
     }
-
-    private static bool IsHttps(string? url) =>
-        Uri.TryCreate(url, UriKind.Absolute, out var uri) && uri.Scheme == Uri.UriSchemeHttps;
 
     private static string Truncate(string? body)
     {

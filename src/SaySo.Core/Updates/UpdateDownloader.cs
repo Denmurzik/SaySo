@@ -59,6 +59,8 @@ public sealed class UpdateDownloader(HttpClient http, string directory)
 {
     public static readonly TimeSpan DownloadTimeout = TimeSpan.FromMinutes(10);
 
+    private static readonly string[] OwnFilePatterns = ["SaySo-Setup-*.exe", "SaySo-Setup-*.exe.part"];
+
     private const int MaxChecksumFileBytes = 4096;
     private const int BufferSize = 81920;
 
@@ -75,8 +77,12 @@ public sealed class UpdateDownloader(HttpClient http, string directory)
         var partPath = finalPath + ".part";
         try
         {
-            Directory.CreateDirectory(directory);
-            CleanDirectory();
+            if (!PrepareDirectory())
+            {
+                return DownloadResult.Fail(DownloadFailure.Io);
+            }
+
+            CleanOwnFiles();
 
             var expected = await ReadChecksumAsync(release, timeout.Token).ConfigureAwait(false);
             if (expected is null)
@@ -90,7 +96,9 @@ public sealed class UpdateDownloader(HttpClient http, string directory)
                 return DownloadResult.Fail(failure.Value);
             }
 
-            File.Move(partPath, finalPath, overwrite: true);
+            // Перезаписи нет: старый файл (наш же) удалён, а чужую ссылку/файл на его месте Move не затрёт, а откажет.
+            TryDelete(finalPath);
+            File.Move(partPath, finalPath);
             return Verify(finalPath, release.SetupSize, expected);
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
@@ -184,11 +192,13 @@ public sealed class UpdateDownloader(HttpClient http, string directory)
         }
 
         await using var source = await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
-        await using var target = new FileStream(partPath, FileMode.Create, FileAccess.Write, FileShare.None, BufferSize, useAsync: true);
+        // CreateNew после удаления: символическая ссылка на месте .part не перенаправит запись в другой файл.
+        TryDelete(partPath);
+        await using var target = new FileStream(partPath, FileMode.CreateNew, FileAccess.Write, FileShare.None, BufferSize, useAsync: true);
         var buffer = new byte[BufferSize];
         long total = 0;
         int read;
-        while ((read = await source.ReadAsync(buffer, ct).ConfigureAwait(false)) > 0)
+        while ((read = await HttpLimits.ReadNetworkAsync(source, buffer, ct).ConfigureAwait(false)) > 0)
         {
             total += read;
             if (total > release.SetupSize)
@@ -233,12 +243,42 @@ public sealed class UpdateDownloader(HttpClient http, string directory)
         }
     }
 
-    // Остатки прошлых обновлений (Setup прежней версии, недокачанные .part) в папке больше не нужны.
-    private void CleanDirectory()
+    /// <summary>
+    /// Папка должна быть настоящим каталогом: если она (или созданные нами родители) — точка повторной обработки
+    /// (символическая ссылка, junction), скачивание отменяется — иначе Setup оказался бы в чужом месте.
+    /// </summary>
+    private bool PrepareDirectory()
     {
-        foreach (var file in Directory.EnumerateFiles(directory))
+        var created = new List<DirectoryInfo>();
+        for (var d = new DirectoryInfo(directory); d is { Exists: false }; d = d.Parent)
         {
-            TryDelete(file);
+            created.Add(d);
+        }
+
+        Directory.CreateDirectory(directory);
+        created.Add(new DirectoryInfo(directory));
+        foreach (var d in created)
+        {
+            d.Refresh();
+            if (d.Attributes.HasFlag(FileAttributes.ReparsePoint))
+            {
+                Log.Info("Папка обновления — точка повторной обработки: скачивание отменено");
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    // Остатки прошлых обновлений (наши SaySo-Setup-*.exe и .part) в папке больше не нужны; чужое не трогаем и по папкам не ходим.
+    private void CleanOwnFiles()
+    {
+        foreach (var pattern in OwnFilePatterns)
+        {
+            foreach (var file in Directory.EnumerateFiles(directory, pattern, SearchOption.TopDirectoryOnly))
+            {
+                TryDelete(file);
+            }
         }
     }
 }

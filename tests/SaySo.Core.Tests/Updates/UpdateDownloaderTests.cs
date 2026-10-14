@@ -56,7 +56,37 @@ public sealed class UpdateDownloaderTests : IDisposable
     private readonly RoutingHandler _handler = new();
     private readonly byte[] _setup = SetupBytes();
 
-    public void Dispose() => _temp.Dispose();
+    public void Dispose()
+    {
+        // Junction удаляем как ссылку (рекурсивное удаление TempDir пошло бы по ней в цель).
+        if (Directory.Exists(Dir) && new DirectoryInfo(Dir).Attributes.HasFlag(FileAttributes.ReparsePoint))
+        {
+            Directory.Delete(Dir);
+        }
+
+        _temp.Dispose();
+    }
+
+    private static bool TryMakeJunction(string link, string target)
+    {
+        try
+        {
+            using var process = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(
+                Path.Combine(Environment.SystemDirectory, "cmd.exe"), $"/c mklink /J \"{link}\" \"{target}\"")
+            {
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+            })!;
+            process.WaitForExit(10_000);
+            return process.HasExited && process.ExitCode == 0 && Directory.Exists(link);
+        }
+        catch (Exception e) when (e is System.ComponentModel.Win32Exception or InvalidOperationException)
+        {
+            return false;
+        }
+    }
 
     private string Dir => Path.Combine(_temp.Path, "SaySo-Update");
 
@@ -247,6 +277,67 @@ public sealed class UpdateDownloaderTests : IDisposable
         using var installer = (await Download()).Installer!;
 
         Assert.Equal([ExePath], Directory.GetFiles(Dir));
+    }
+
+    [Fact]
+    public async Task OnlyOurOwnSetupFilesAreCleaned_NothingElse_AndNoRecursion()
+    {
+        Directory.CreateDirectory(Path.Combine(Dir, "sub"));
+        File.WriteAllText(Path.Combine(Dir, "notes.txt"), "чужое");
+        File.WriteAllText(Path.Combine(Dir, "other.exe"), "чужое");
+        File.WriteAllText(Path.Combine(Dir, "sub", "SaySo-Setup-0.0.1.exe"), "во вложенной папке");
+        File.WriteAllText(Path.Combine(Dir, "SaySo-Setup-0.1.5.exe"), "old");
+        File.WriteAllText(Path.Combine(Dir, "SaySo-Setup-0.1.6.exe.part"), "partial");
+        Serve();
+
+        using var installer = (await Download()).Installer!;
+
+        Assert.True(File.Exists(Path.Combine(Dir, "notes.txt")));
+        Assert.True(File.Exists(Path.Combine(Dir, "other.exe")));
+        Assert.True(File.Exists(Path.Combine(Dir, "sub", "SaySo-Setup-0.0.1.exe")));
+        Assert.False(File.Exists(Path.Combine(Dir, "SaySo-Setup-0.1.5.exe")));
+        Assert.False(File.Exists(Path.Combine(Dir, "SaySo-Setup-0.1.6.exe.part")));
+        Assert.True(File.Exists(ExePath));
+    }
+
+    [Fact]
+    public async Task StaleTargetOfTheSameVersion_IsReplacedWithTheVerifiedFile()
+    {
+        Directory.CreateDirectory(Dir);
+        File.WriteAllText(ExePath, "подложный файл той же версии");
+        Serve();
+
+        using var installer = (await Download()).Installer!;
+
+        Assert.Equal(_setup, File.ReadAllBytes(ExePath));
+    }
+
+    [Fact]
+    public async Task DownloadFolderThatIsAJunction_IsRefused_NothingIsWrittenThroughIt()
+    {
+        var elsewhere = Path.Combine(_temp.Path, "elsewhere");
+        Directory.CreateDirectory(elsewhere);
+        Assert.SkipUnless(TryMakeJunction(Dir, elsewhere), "Не удалось создать junction (mklink /J недоступен)");
+        Serve();
+
+        var result = await Download();
+
+        Assert.Null(result.Installer);
+        Assert.Equal(DownloadFailure.Io, result.Failure);
+        Assert.Empty(Directory.GetFiles(elsewhere));
+        Assert.Empty(_handler.Requests); // отказ до обращения к сети
+    }
+
+    [Fact]
+    public async Task ConnectionDroppedInTheMiddleOfTheSetup_IsANetworkFailure_NotADiskError()
+    {
+        _handler.Route(SetupUrl("0.2.0"), _ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StreamContent(new DroppingStream(_setup[..1000])) });
+        _handler.Text(ShaUrl("0.2.0"), $"{Sha256Hex(_setup)}  SaySo-Setup-0.2.0.exe");
+
+        var result = await Download();
+
+        Assert.Equal(DownloadFailure.Network, result.Failure);
+        Assert.Empty(Directory.GetFiles(Dir));
     }
 
     [Fact]

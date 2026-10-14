@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using SaySo.Core.Diagnostics;
+using SaySo.Core.Input;
 
 namespace SaySo.Core.Updates;
 
@@ -63,21 +64,31 @@ public static class UpdateShell
         }
     }
 
-    /// <summary>Открывает страницу релиза в браузере; только https.</summary>
-    public static void OpenUrl(string url)
+    /// <summary>
+    /// Открывает страницу релиза в браузере; только адреса из белого списка (<see cref="UpdateUrls"/>). Из процесса с правами
+    /// администратора — через <c>explorer.exe</c>: браузер запускается без повышения (как демон в <c>AdminModeSwitcher</c>).
+    /// </summary>
+    /// <returns>false — адрес не из белого списка или оболочка не смогла открыть его.</returns>
+    public static bool OpenUrl(string url)
     {
-        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps)
+        if (!UpdateUrls.IsTrusted(url))
         {
-            return;
+            return false;
         }
 
+        var address = new Uri(url).AbsoluteUri; // в каноническом виде кавычки экранированы: в командную строку попасть не могут
         try
         {
-            Process.Start(new ProcessStartInfo(uri.AbsoluteUri) { UseShellExecute = true })?.Dispose();
+            var info = ProcessIntegrity.IsElevated
+                ? new ProcessStartInfo("explorer.exe", "\"" + address + "\"") { UseShellExecute = false }
+                : new ProcessStartInfo(address) { UseShellExecute = true };
+            Process.Start(info)?.Dispose();
+            return true;
         }
         catch (Exception e) when (e is Win32Exception or InvalidOperationException)
         {
             Log.Error("Открытие страницы релиза", e);
+            return false;
         }
     }
 }

@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using SaySo.Core.Diagnostics;
+using SaySo.Core.Input;
 using SaySo.Core.Overlay;
 
 namespace SaySo.Core.Updates;
@@ -38,12 +39,24 @@ public interface IUpdateHost
 /// <param name="ExePath">Путь к запущенному SaySo.exe.</param>
 /// <param name="ProgramFilesRoots">Каталоги Program Files.</param>
 /// <param name="DownloadDirectory">Куда скачивать Setup (<c>%TEMP%\SaySo-Update</c>).</param>
-public sealed record UpdateEnvironment(string ExePath, IReadOnlyList<string> ProgramFilesRoots, string DownloadDirectory)
+/// <param name="ReadInstallEntry">Чтение ключа удаления Inno (HKLM / HKCU); по нему определяется режим установки.</param>
+/// <param name="Elevated">Процесс запущен с правами администратора: скачивать и запускать Setup запрещено.</param>
+public sealed record UpdateEnvironment(
+    string ExePath,
+    IReadOnlyList<string> ProgramFilesRoots,
+    string DownloadDirectory,
+    Func<InstallHive, InstallEntry?> ReadInstallEntry,
+    bool Elevated)
 {
     public static UpdateEnvironment Current() => new(
         Environment.ProcessPath ?? Path.Combine(AppContext.BaseDirectory, "SaySo.exe"),
         UpdateInstallPlan.SystemProgramFilesRoots(),
-        Path.Combine(Path.GetTempPath(), "SaySo-Update"));
+        Path.Combine(Path.GetTempPath(), "SaySo-Update"),
+        InstallRegistry.Read,
+        ProcessIntegrity.IsElevated);
+
+    public UpdateInstallPlan PlanFor(bool releaseInstallable) =>
+        UpdateInstallPlan.Decide(ExePath, ProgramFilesRoots, ReadInstallEntry, releaseInstallable, Elevated);
 }
 
 /// <summary>
@@ -79,6 +92,12 @@ public sealed class UpdateCoordinator(
 
     /// <summary>Найденная более новая версия (null — не знаем о такой).</summary>
     public ReleaseInfo? Pending { get; private set; }
+
+    /// <summary>Поставить найденную версию из приложения нельзя (администратор, неустановленная копия, нет Setup): только страница релиза.</summary>
+    public bool PendingNeedsManualInstall => Pending is { } release && NeedsManualInstall(release);
+
+    private bool NeedsManualInstall(ReleaseInfo release) =>
+        environment.PlanFor(release.IsInstallable).Action != UpdateInstallAction.Install;
 
     public void OnStart() => ScheduleAutoCheck(StartDelay);
 
@@ -331,7 +350,7 @@ public sealed class UpdateCoordinator(
         }
 
         _balloonVersion = release.Version;
-        host.ShowBalloon(UpdateMessages.Balloon(release.Version));
+        host.ShowBalloon(UpdateMessages.Balloon(release.Version, NeedsManualInstall(release)));
     }
 
     private async Task InstallCoreAsync()
@@ -361,10 +380,11 @@ public sealed class UpdateCoordinator(
             release = found;
         }
 
-        var plan = UpdateInstallPlan.Decide(environment.ExePath, environment.ProgramFilesRoots, File.Exists, release.IsInstallable);
+        var plan = environment.PlanFor(release.IsInstallable);
         if (plan.Action == UpdateInstallAction.OpenReleasePage)
         {
-            Log.Info($"Версия {release.Version.ToString(3)}: автоматическая установка недоступна — открыта страница релиза");
+            Log.Info($"Версия {release.Version.ToString(3)}: автоматическая установка недоступна"
+                     + (environment.Elevated ? " (процесс с правами администратора)" : "") + " — открыта страница релиза");
             host.OpenUrl(release.HtmlUrl);
             return;
         }
@@ -471,9 +491,11 @@ public sealed class UpdateCoordinator(
                 }
                 else
                 {
-                    // Отказ в UAC (Setup завершается с ненулевым кодом) или отмена в самом Setup; коды Inno 3 и 4 — фатальная ошибка.
+                    // Коды выхода Inno: 1 не удалось инициализировать, 3 и 4 фатальная ошибка при подготовке и установке, 6 прерван
+                    // принудительно, 7 и 8 перезагрузка не удалась — это сбой установки; 2 и 5 (отмена пользователем), отказ в UAC
+                    // и всё прочее — «отменено».
                     installer.Delete();
-                    var fatal = run.ExitCode is 3 or 4;
+                    var fatal = run.ExitCode is 1 or 3 or 4 or 6 or 7 or 8;
                     host.ShowMessage(fatal ? OverlayMessages.UpdateInstallFailed : OverlayMessages.UpdateCancelled, isError: fatal);
                 }
 

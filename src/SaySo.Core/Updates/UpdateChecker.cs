@@ -107,9 +107,9 @@ public sealed class UpdateChecker(HttpClient http, Version current, string? url 
         {
             return UpdateCheckResult.Failed(UpdateFailure.Timeout);
         }
-        catch (HttpRequestException)
+        catch (Exception e) when (e is HttpRequestException or IOException)
         {
-            return UpdateCheckResult.Failed(UpdateFailure.Network);
+            return UpdateCheckResult.Failed(UpdateFailure.Network); // в том числе обрыв посреди тела ответа (HttpIOException)
         }
         catch (JsonException)
         {
@@ -120,6 +120,19 @@ public sealed class UpdateChecker(HttpClient http, Version current, string? url 
 
 internal static class HttpLimits
 {
+    /// <summary>Чтение тела ответа: обрыв соединения (IOException, HttpIOException) — это сбой сети, а не диска.</summary>
+    public static async Task<int> ReadNetworkAsync(Stream source, byte[] buffer, CancellationToken ct)
+    {
+        try
+        {
+            return await source.ReadAsync(buffer, ct).ConfigureAwait(false);
+        }
+        catch (IOException e)
+        {
+            throw new HttpRequestException("Обрыв соединения", e);
+        }
+    }
+
     /// <returns>Тело ответа или null, если оно больше <paramref name="maxBytes"/>.</returns>
     public static async Task<byte[]?> ReadAsync(HttpContent content, int maxBytes, CancellationToken ct)
     {
@@ -132,7 +145,7 @@ internal static class HttpLimits
         using var buffer = new MemoryStream();
         var chunk = new byte[8192];
         int read;
-        while ((read = await stream.ReadAsync(chunk, ct).ConfigureAwait(false)) > 0)
+        while ((read = await ReadNetworkAsync(stream, chunk, ct).ConfigureAwait(false)) > 0)
         {
             if (buffer.Length + read > maxBytes)
             {

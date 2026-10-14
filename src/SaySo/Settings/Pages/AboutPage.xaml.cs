@@ -74,8 +74,9 @@ public sealed partial class AboutPage : UserControl
                 var release = result.Release!;
                 var env = UpdateEnvironment.Current();
                 _release = release;
-                _plan = UpdateInstallPlan.Decide(env.ExePath, env.ProgramFilesRoots, File.Exists, release.IsInstallable);
-                InstallButton.Content = _plan.Action == UpdateInstallAction.Install ? "Обновить" : "Открыть страницу релиза";
+                _plan = env.PlanFor(release.IsInstallable);
+                var manual = _plan.Action != UpdateInstallAction.Install;
+                InstallButton.Content = manual ? "Открыть страницу релиза" : "Обновить";
                 InstallButton.IsEnabled = true;
                 InstallButton.Visibility = Visibility.Visible;
                 if (release.Notes.Length > 0)
@@ -85,7 +86,7 @@ public sealed partial class AboutPage : UserControl
                 }
 
                 IpcClient.Send(IpcProtocol.CheckUpdates); // пункт «Обновить до X.Y.Z» в меню трея
-                SetBusy(false, UpdateMessages.Available(release.Version));
+                SetBusy(false, UpdateMessages.Available(release.Version, manual));
                 break;
             default:
                 SetBusy(false, UpdateMessages.UpToDate);

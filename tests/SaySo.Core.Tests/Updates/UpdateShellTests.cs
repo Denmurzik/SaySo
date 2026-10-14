@@ -15,14 +15,28 @@ public class UpdateShellTests
         Assert.Equal(InstallerLaunchResult.Failed, run.Result);
     }
 
-    [Fact]
-    public void OpenUrl_IgnoresNonHttps()
-    {
-        // Ничего не запускается: не https отбрасывается до обращения к оболочке (иначе тест открыл бы окно/программу).
-        UpdateShell.OpenUrl("file:///C:/Windows/System32/cmd.exe");
-        UpdateShell.OpenUrl("calc.exe");
-        UpdateShell.OpenUrl("");
-    }
+    [Theory]
+    [InlineData("file:///C:/Windows/System32/cmd.exe")]
+    [InlineData("calc.exe")]
+    [InlineData("")]
+    [InlineData("http://github.com/Denmurzik/SaySo/releases/tag/v0.2.0")]
+    [InlineData("https://example.test/Denmurzik/SaySo/releases/tag/v0.2.0")]
+    [InlineData("https://github.com/other/repo/releases/tag/v0.2.0")]
+    [InlineData("https://github.com.evil.test/Denmurzik/SaySo/releases/tag/v0.2.0")]
+    public void OpenUrl_RefusesAnythingOutsideTheAllowList_WithoutTouchingTheShell(string url) =>
+        Assert.False(UpdateShell.OpenUrl(url));
+
+    [Theory]
+    [InlineData("https://github.com/Denmurzik/SaySo/releases/tag/v0.2.0", true)]
+    [InlineData("https://GitHub.com/denmurzik/saysO/RELEASES/download/v0.2.0/x.exe", true)]
+    [InlineData("https://github.com/Denmurzik/SaySo/releases/", true)]
+    [InlineData("https://github.com/Denmurzik/SaySo/releases", false)]
+    [InlineData("https://github.com/Denmurzik/SaySo/", false)]
+    [InlineData("https://github.com:443/Denmurzik/SaySo/releases/tag/v1.0.0", true)]
+    [InlineData("https://github.com:444/Denmurzik/SaySo/releases/tag/v1.0.0", false)]
+    [InlineData("https://github.com/Denmurzik/SaySo/releases/../../x", false)]
+    [InlineData(null, false)]
+    public void UpdateUrls_AllowListRules(string? url, bool trusted) => Assert.Equal(trusted, UpdateUrls.IsTrusted(url));
 
     /// <summary>Запускает настоящий процесс (cmd.exe, на мгновение появится окно консоли) — только по одному классу под блокировкой.</summary>
     [Fact]
