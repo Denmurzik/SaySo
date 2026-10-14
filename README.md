@@ -17,7 +17,7 @@
 ## Why SaySo
 
 - **Smart, not verbatim.** Speech is transcribed by **Gemini 3.5 Transcribe** in *Smart* («Умный») mode: filler words are removed, self-corrections are resolved (*“Friday — no, Saturday”* → *“Saturday”*), punctuation, casing and numbers are formatted.
-- **Tiny in the background.** A NativeAOT daemon that never loads XAML: **{idleWs} MB** working set at idle (**{idlePrivate} MB** private). The WinUI 3 settings window is a separate process that fully exits when you close it.
+- **Tiny in the background.** A NativeAOT daemon that never loads XAML: **0.2 MB** working set at idle (**6.9 MB** private). The WinUI 3 settings window is a separate process that fully exits when you close it.
 - **Never loses what you said.** Add several Gemini keys and SaySo switches to the next one the moment a key hits its quota — even mid-sentence, re-sending what was already recorded. No keys left or network down? The recording goes to **Groq Whisper** with LLM cleanup instead.
 - **Works everywhere.** Pastes into whatever app is focused; your clipboard text is restored and dictations are kept out of Win+V history.
 - **Private by default.** Audio never touches the disk. API keys and history are encrypted with Windows DPAPI. Data flow: audio and your vocabulary terms go to Google Gemini; if the fallback kicks in, audio and the transcript go to Groq; checking API keys also calls these APIs.
@@ -43,6 +43,42 @@ flowchart LR
 
 The hotkey, language, model, vocabulary and microphone are configurable.
 
+## Screenshots
+
+### Overlay and tray
+
+The overlay is drawn by the same renderer the app uses (the animation at the top shows recording, then processing). Error and info messages are one short line; the full text of an error is in the tray icon's tooltip.
+
+| State | Overlay |
+|---|---|
+| Recording — the bars follow your voice | <img src="docs/assets/overlay-recording.png" width="112" alt="Overlay: recording"> |
+| Processing — the text is being recognized and cleaned up | <img src="docs/assets/overlay-processing.png" width="112" alt="Overlay: processing"> |
+| Error — for example, the key hit its limit and no fallback is set up | <img src="docs/assets/overlay-error.png" width="339" alt="Overlay: error message"> |
+| Info — for example, the text came from the Groq fallback | <img src="docs/assets/overlay-info.png" width="305" alt="Overlay: info message"> |
+
+The tray menu (right-click the icon):
+
+<img src="docs/assets/tray-menu.png" width="231" alt="SaySo tray menu">
+
+### Settings
+
+<table>
+<tr>
+<td align="center" valign="top"><a href="docs/assets/settings-general.png"><img src="docs/assets/settings-general.png" width="440" alt="Settings: General"></a><br><sub>General («Общие»): hotkey, sounds, autostart, admin mode</sub></td>
+<td align="center" valign="top"><a href="docs/assets/settings-recognition.png"><img src="docs/assets/settings-recognition.png" width="440" alt="Settings: Recognition"></a><br><sub>Recognition («Распознавание»): Gemini keys, mode, language, Groq fallback</sub></td>
+</tr>
+<tr>
+<td align="center" valign="top"><a href="docs/assets/settings-dictionary.png"><img src="docs/assets/settings-dictionary.png" width="440" alt="Settings: Dictionary"></a><br><sub>Dictionary («Словарь»): names and terms to recognise exactly</sub></td>
+<td align="center" valign="top"><a href="docs/assets/settings-microphone.png"><img src="docs/assets/settings-microphone.png" width="440" alt="Settings: Microphone"></a><br><sub>Microphone («Микрофон»): device choice and level check</sub></td>
+</tr>
+<tr>
+<td align="center" valign="top"><a href="docs/assets/settings-history.png"><img src="docs/assets/settings-history.png" width="440" alt="Settings: History"></a><br><sub>History («История»): the last 20 dictations</sub></td>
+<td align="center" valign="top"><a href="docs/assets/settings-about.png"><img src="docs/assets/settings-about.png" width="440" alt="Settings: About"></a><br><sub>About («О программе»): version, how to get a key, privacy</sub></td>
+</tr>
+</table>
+
+Click an image to open it full size. API keys and history in these screenshots are demo placeholders.
+
 ## Install
 
 Requirements: Windows 11 x64, a microphone, a Gemini API key (free tier) and optionally a Groq API key (free) for the fallback.
@@ -63,7 +99,9 @@ Uninstall: `powershell -ExecutionPolicy Bypass -File .\uninstall.ps1` (add `-Rem
 - **Gemini** — create a key in [Google AI Studio](https://aistudio.google.com/apikey). Your own free-tier limits are shown in AI Studio (Google does not publish fixed numbers for this preview model). On the free tier Google may use requests to improve its products. The Gemini API is not available in some regions (including Russia) — a system-wide VPN is required there.
 - **Groq** (optional fallback) — create a key in the [Groq Console](https://console.groq.com/keys).
 
-Paste the keys into *Settings → Recognition* («Распознавание») (you can add several Gemini keys) and press *Check keys* («Проверить ключи»).
+Paste the keys into *Settings → Recognition* («Распознавание») (you can add several Gemini keys) and press *Check keys* («Проверить ключи»). Keys are shown masked.
+
+<p align="center"><img src="docs/assets/settings-recognition.png" width="560" alt="Settings: Recognition"></p>
 
 Windows must allow desktop apps to use the microphone: *Settings → Privacy & security → Microphone*.
 
@@ -73,11 +111,15 @@ Open them from the tray icon (double-click, or right-click → *Settings…* («
 
 ### Microphone
 
-SaySo remembers the microphone you pick. A chosen headset is used automatically whenever it is connected again: it is matched by device Id, and by name if Windows gave it a new Id after you plugged it into another USB port. While it is unplugged, dictation uses the Windows default microphone. An explicitly chosen built-in microphone stays selected even when a headset is connected. *Same as Windows (default)* («Как в Windows (по умолчанию)») always follows the Windows default device.
+SaySo remembers the microphone you pick. A chosen headset is used automatically whenever it is connected again: it is matched by device Id, and by name if Windows gave it a new Id after you plugged it into another USB port. While it is unplugged, dictation uses the Windows default microphone. An explicitly chosen built-in microphone stays selected even when a headset is connected. *Same as Windows (default)* («Как в Windows (по умолчанию)») always follows the Windows default device. *Check microphone* («Проверить микрофон») shows a live level bar.
+
+<p align="center"><img src="docs/assets/settings-microphone.png" width="560" alt="Settings: Microphone"></p>
 
 ### Admin mode (optional)
 
-Windows does not let a normal app paste into windows running as administrator (elevated terminals, some IDEs): SaySo leaves the text on the clipboard and says so on the overlay. *General → Run as administrator* («Общие» → «Запускать от имени администратора») lifts this: SaySo is then started at logon by a Task Scheduler task with the highest privileges (one UAC prompt when you switch it on). Admin mode launches `SaySo.exe` elevated from its install folder, which is writable by programs running under your account — enable it only if you trust the software on this PC.
+Windows does not let a normal app paste into windows running as administrator (elevated terminals, some IDEs): SaySo leaves the text on the clipboard and says so on the overlay. *General → Run as administrator* («Общие» → «Запускать от имени администратора») lifts this: SaySo is then started at logon by a Task Scheduler task with the highest privileges (one UAC prompt when you switch it on). Admin mode launches `SaySo.exe` elevated from its install folder, which is writable by programs running under your account — enable it only if you trust the software on this PC (the switch has the same warning next to it).
+
+<p align="center"><img src="docs/assets/settings-general.png" width="560" alt="Settings: General, including the admin mode switch"></p>
 
 ## Memory footprint
 
@@ -85,14 +127,14 @@ Measured on Windows 11 (x64), NativeAOT Release build:
 
 | Process | Working set | Private bytes |
 |---|---|---|
-| Daemon, idle after start | {idleWs} MB | {idlePrivate} MB |
-| Daemon, 10 s after a dictation | {afterWs} MB | {afterPrivate} MB |
-| Settings window (open) | {settingsWs} MB | {settingsPrivate} MB |
+| Daemon, idle after start | 0.2 MB | 6.9 MB |
+| Daemon, 10 s after a dictation | 0.3 MB | 8.8 MB |
+| Settings window (open) | 147.5 MB | 93.4 MB |
 | Settings window (closed) | process exits | — |
 
-Publish size: {publishMb} MB.
+Publish size: 66.6 MB (`SaySo.exe` is 9.6 MB).
 
-<p align="center"><img src="docs/assets/settings.png" width="720" alt="SaySo settings"></p>
+The daemon trims its working set after start and after every dictation, so *Private bytes* is the more telling column. The dictation row is a 1.5 s recording measured without real API keys; the settings row is 6 s after opening the window.
 
 ## Build & test
 
