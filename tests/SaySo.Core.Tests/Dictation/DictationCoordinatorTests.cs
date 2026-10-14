@@ -378,18 +378,64 @@ public sealed class DictationCoordinatorTests : IDisposable
         Assert.Equal(DictationState.Recording, coordinator.State);
     }
 
+    private const string NoSpeechCall = "message:Info:Речь не распознана";
+
     [Fact]
-    public async Task Silence_InsertsNothing_HidesOverlay()
+    public async Task Silence_InsertsNothing_ShowsNoSpeechInfo()
     {
         var c = Create();
+        var ended = 0;
+        c.SessionEnded += () => ended++;
         await c.HandleAsync(HotkeyAction.StartRecording);
         _sources[0].Push(new byte[32000]);
         await c.HandleAsync(HotkeyAction.StopRecording);
 
         Assert.Empty(_output.Texts);
         Assert.Empty(_history.Load());
-        Assert.Equal("hide", _overlay.Calls[^1]);
+        Assert.Equal(NoSpeechCall, _overlay.Calls[^1]);
+        Assert.Equal(1, _overlay.Calls.Count(call => call == NoSpeechCall));
+        Assert.DoesNotContain("hide", _overlay.Calls);
+        Assert.Empty(_feedback.Sounds); // ни звука ошибки, ни «стоп»: это не сбой
+        Assert.Equal(TrayState.Idle, _feedback.Tray[^1]);
+        Assert.DoesNotContain(TrayState.Error, _feedback.Tray);
+        Assert.Equal(DictationState.Idle, c.State);
+        Assert.Equal(1, _resets);
+        Assert.Equal(1, ended);
+    }
+
+    [Fact]
+    public async Task TooShortRecording_AfterFeedbackDelay_ShowsNoSpeechInfo_WithoutAskingEngines()
+    {
+        var c = Create();
+        await c.HandleAsync(HotkeyAction.StartRecording);
+        _scheduler.Fire(DictationCoordinator.EngineStartDelay);
+        _sources[0].Push(TestAudio.Speech(100)); // короче MinSpeechMs
+        await c.HandleAsync(HotkeyAction.StopRecording);
+
+        Assert.Equal(NoSpeechCall, _overlay.Calls[^1]);
+        Assert.Empty(_output.Texts);
+        Assert.Empty(_history.Load());
+        Assert.Empty(_fallback.Calls);
         Assert.DoesNotContain(SoundKind.Error, _feedback.Sounds);
+        Assert.DoesNotContain(SoundKind.Stop, _feedback.Sounds);
+    }
+
+    [Fact]
+    public async Task EngineReturnsEmptyText_ShowsNoSpeechInfo_AndTouchesNothing()
+    {
+        _primary.Factory = _ => new FakeSession { Complete = () => Task.FromResult("  ") };
+        var c = Create();
+        await c.HandleAsync(HotkeyAction.StartRecording);
+        _scheduler.Fire(DictationCoordinator.EngineStartDelay);
+        _sources[0].Push(TestAudio.Speech(1000));
+        await c.HandleAsync(HotkeyAction.StopRecording);
+
+        Assert.Equal(NoSpeechCall, _overlay.Calls[^1]);
+        Assert.Empty(_output.Texts);
+        Assert.Empty(_history.Load());
+        Assert.DoesNotContain(SoundKind.Error, _feedback.Sounds);
+        Assert.DoesNotContain(SoundKind.Stop, _feedback.Sounds);
+        Assert.Equal(TrayState.Idle, _feedback.Tray[^1]);
     }
 
     [Fact]
@@ -702,7 +748,7 @@ public sealed class DictationCoordinatorTests : IDisposable
         Assert.Empty(_primary.Sessions);
         Assert.Empty(_output.Texts);
         Assert.Empty(_history.Load());
-        Assert.Equal("hide", _overlay.Calls[^1]);
+        Assert.Equal(NoSpeechCall, _overlay.Calls[^1]);
         Assert.Equal(DictationState.Idle, c.State);
     }
 

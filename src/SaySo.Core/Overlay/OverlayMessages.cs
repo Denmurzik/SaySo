@@ -34,6 +34,9 @@ public static class OverlayMessages
     /// <summary>«Вставить последнее»: окно, куда вставляли, не получило фокус (или закрыто).</summary>
     public const string FocusNotRestored = "Не удалось вернуться в окно — текст в истории";
 
+    /// <summary>Запись закончилась, а текста нет: тишина, слишком короткая реплика или пустой ответ движка. Не ошибка (тон Info).</summary>
+    public const string NoSpeech = "Речь не распознана";
+
     // Обновление: плашка показывается, пока идёт скачивание и после отмены/сбоя запуска.
     public const string UpdateDownloading = "Скачиваю обновление…";
     public const string UpdateInstalling = "Устанавливаю обновление…";
@@ -107,8 +110,8 @@ public static class OverlayMessages
         _ => "Не удалось скачать обновление",
     };
 
-    /// <summary>Все возможные строки плашки (по одной на вариант) — для проверки ширины.</summary>
-    public static IEnumerable<string> All() => AllTexts().Select(t => t.Short).Concat(UpdateTexts());
+    /// <summary>Все возможные строки плашки (по одной на вариант) — для проверки ширины. <see cref="NoSpeech"/> — не ошибка, в <see cref="AllDetails"/> его нет.</summary>
+    public static IEnumerable<string> All() => AllTexts().Select(t => t.Short).Concat(UpdateTexts()).Append(NoSpeech);
 
     /// <summary>Полные тексты для подсказки трея — для проверки, что они помещаются в её лимит.</summary>
     public static IEnumerable<string> AllDetails() => AllTexts().Select(t => t.Detail);

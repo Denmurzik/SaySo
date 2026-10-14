@@ -209,7 +209,8 @@ public sealed class DictationCoordinator(
             var result = await run.FinishAsync(CancellationToken.None);
             if (result.IsEmpty)
             {
-                overlay.Hide();
+                // Тишина, слишком короткая реплика или пустой ответ движка: не сбой, поэтому тон Info, без звука; история и буфер не трогаются.
+                overlay.ShowMessage(OverlayMessages.NoSpeech, OverlayTone.Info);
                 return;
             }
 

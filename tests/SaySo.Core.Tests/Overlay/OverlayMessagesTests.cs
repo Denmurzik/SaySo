@@ -83,6 +83,14 @@ public class OverlayMessagesTests
     }
 
     [Fact]
+    public void NoSpeech_IsInTheWidthCatalog_AndNotAnErrorDetail()
+    {
+        Assert.Equal("Речь не распознана", OverlayMessages.NoSpeech);
+        Assert.Contains(OverlayMessages.NoSpeech, OverlayMessages.All());
+        Assert.DoesNotContain(OverlayMessages.NoSpeech, OverlayMessages.AllDetails()); // не ошибка: в подсказку значка не попадает
+    }
+
+    [Fact]
     public void StartFailed_IsOneVariant() =>
         Assert.Equal("Не удалось начать запись — подробности в журнале", OverlayMessages.StartFailed);
 
