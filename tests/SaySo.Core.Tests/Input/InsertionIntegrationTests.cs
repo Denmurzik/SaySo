@@ -97,12 +97,22 @@ public class InsertionIntegrationTests
             var owner = ClipboardOwner.Create();
             ClipboardText.TryGetText(owner, out var saved);
             using var opened = new ManualResetEventSlim();
+            var holderOpened = false;
             using var release = new ManualResetEventSlim();
             var holder = new Thread(() =>
             {
-                // Окно-владелец создаётся в потоке-держателе: буфер привязывается к потоку окна.
                 var holderOwner = ClipboardOwner.Create();
-                Native.OpenClipboard(holderOwner);
+
+                // Буфер могут кратко держать сторонние слушатели (менеджеры буфера обмена) — как и в продакшене, пробуем несколько раз.
+                for (var i = 0; i < 20 && !holderOpened; i++)
+                {
+                    holderOpened = Native.OpenClipboard(holderOwner);
+                    if (!holderOpened)
+                    {
+                        Thread.Sleep(15);
+                    }
+                }
+
                 opened.Set();
                 release.Wait(TimeSpan.FromSeconds(5));
                 Native.CloseClipboard();
@@ -112,6 +122,7 @@ public class InsertionIntegrationTests
             try
             {
                 Assert.True(opened.Wait(TimeSpan.FromSeconds(5)));
+                Assert.True(holderOpened, "поток-держатель должен реально открыть буфер, иначе тест ничего не проверяет");
                 // Пока другой поток держит буфер, запись не удаётся (после ~150 мс попыток), а не зависает.
                 Assert.False(ClipboardText.SetText(owner, "не должно записаться", excludeFromHistory: true));
             }

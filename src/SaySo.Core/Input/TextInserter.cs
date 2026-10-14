@@ -7,14 +7,35 @@ public enum InsertOutcome
     Inserted,
     BlockedByElevation,
     ClipboardUnavailable,
+    InputBlocked,
     NoTarget,
 }
 
-/// <summary>Вставка текста в окно переднего плана через буфер обмена и Ctrl+V с восстановлением буфера.</summary>
-public sealed class TextInserter(nint clipboardOwner, TimeProvider time)
+/// <summary>
+/// Вставка текста в окно переднего плана через буфер обмена и Ctrl+V с восстановлением буфера.
+/// Потоковый контракт: каждая операция с буфером (Open/Close) синхронна внутри одного вызова, но
+/// <see cref="InsertAsync"/> делает несколько таких вызовов с ожиданиями между ними, поэтому экземпляр используют
+/// на потоке, создавшем окно-владелец (<see cref="ClipboardOwner"/>), и с SynchronizationContext, который возвращает
+/// продолжения на этот же поток (главный поток демона SaySo). Окно-владелец уничтожается на создавшем его потоке.
+/// </summary>
+public sealed class TextInserter
 {
     public static readonly TimeSpan RestoreDelay = TimeSpan.FromMilliseconds(250);
     public static readonly TimeSpan JoinWindow = TimeSpan.FromSeconds(60);
+
+    private readonly nint _clipboardOwner;
+    private readonly TimeProvider _time;
+
+    public TextInserter(nint clipboardOwner, TimeProvider time)
+    {
+        if (clipboardOwner == 0)
+        {
+            throw new ArgumentException("Нужно окно-владелец буфера обмена (с NULL-владельцем SetClipboardData не работает).", nameof(clipboardOwner));
+        }
+
+        _clipboardOwner = clipboardOwner;
+        _time = time;
+    }
 
     public LastInsertion? Last { get; private set; }
 
@@ -31,27 +52,50 @@ public sealed class TextInserter(nint clipboardOwner, TimeProvider time)
         if (ProcessIntegrity.IsHigherThanCurrent(target))
         {
             // Нажатия в админ-окно заблокирует UIPI — оставляем текст в буфере для ручной вставки.
-            ClipboardText.SetText(clipboardOwner, text, excludeFromHistory: false);
-            return InsertOutcome.BlockedByElevation;
+            return ClipboardText.SetText(_clipboardOwner, text, excludeFromHistory: false)
+                ? InsertOutcome.BlockedByElevation
+                : InsertOutcome.ClipboardUnavailable;
         }
 
-        var prepared = SpaceJoiner.Prepare(text, Last, target, time.GetUtcNow());
-        if (!ClipboardText.TryGetText(clipboardOwner, out var previous)
-            || !ClipboardText.SetText(clipboardOwner, prepared, excludeFromHistory: true))
+        var prepared = SpaceJoiner.Prepare(text, Last, target, _time.GetUtcNow());
+        if (!ClipboardText.TryGetText(_clipboardOwner, out var previous)
+            || !ClipboardText.SetText(_clipboardOwner, prepared, excludeFromHistory: true))
         {
             return InsertOutcome.ClipboardUnavailable;
         }
 
         var ours = ClipboardText.SequenceNumber;
-        KeyboardInjector.SendCtrlV();
-        Last = new LastInsertion(target, time.GetUtcNow(), prepared);
+
+        // Фокус мог уйти, пока писали в буфер: нажатия в другое окно не отправляем.
+        if (Native.GetForegroundWindow() != target)
+        {
+            TryRestore(previous, ours);
+            return InsertOutcome.NoTarget;
+        }
+
+        if (!KeyboardInjector.SendCtrlV())
+        {
+            // Система приняла не все нажатия (защищённый рабочий стол, BlockInput): текст остаётся в буфере для ручной вставки.
+            ClipboardText.SetText(_clipboardOwner, text, excludeFromHistory: false);
+            return InsertOutcome.InputBlocked;
+        }
+
+        Last = new LastInsertion(target, _time.GetUtcNow(), prepared);
 
         await Task.Delay(RestoreDelay).ConfigureAwait(true);
-        if (previous is not null && ClipboardText.SequenceNumber == ours)
+        if (!TryRestore(previous, ours))
         {
-            ClipboardText.SetText(clipboardOwner, previous, excludeFromHistory: true);
+            // Буфер был занят — одна повторная попытка, если он по-прежнему наш.
+            await Task.Delay(RestoreDelay).ConfigureAwait(true);
+            TryRestore(previous, ours);
         }
 
         return InsertOutcome.Inserted;
     }
+
+    /// <returns>false — прежний текст нужно вернуть, но запись не удалась.</returns>
+    private bool TryRestore(string? previous, uint ours) =>
+        previous is null
+        || ClipboardText.SequenceNumber != ours
+        || ClipboardText.SetText(_clipboardOwner, previous, excludeFromHistory: true);
 }

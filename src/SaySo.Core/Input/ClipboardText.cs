@@ -2,7 +2,10 @@ using SaySo.Core.Interop;
 
 namespace SaySo.Core.Input;
 
-/// <summary>Текст в буфере обмена. Вызовы синхронные (Open/Close обязаны быть на одном потоке).</summary>
+/// <summary>
+/// Текст в буфере обмена. Каждая пара OpenClipboard/CloseClipboard целиком выполняется внутри одного синхронного вызова
+/// (на одном потоке), между вызовами буфер не удерживается. Окно-владелец должно быть создано тем же потоком, который вызывает методы.
+/// </summary>
 public static unsafe class ClipboardText
 {
     private static readonly uint ExcludeFromMonitoring = Native.RegisterClipboardFormatW("ExcludeClipboardContentFromMonitorProcessing");
@@ -64,8 +67,16 @@ public static unsafe class ClipboardText
 
     public static bool SetText(nint owner, string text, bool excludeFromHistory)
     {
+        // Память под текст готовим до EmptyClipboard: при сбое выделения прежнее содержимое буфера не теряется.
+        var hText = AllocText(text);
+        if (hText == 0)
+        {
+            return false;
+        }
+
         if (!TryOpen(owner))
         {
+            Native.GlobalFree(hText);
             return false;
         }
 
@@ -73,10 +84,10 @@ public static unsafe class ClipboardText
         {
             if (!Native.EmptyClipboard())
             {
+                Native.GlobalFree(hText);
                 return false;
             }
 
-            var hText = AllocText(text);
             if (Native.SetClipboardData(Native.CF_UNICODETEXT, hText) == 0)
             {
                 Native.GlobalFree(hText);
@@ -114,16 +125,23 @@ public static unsafe class ClipboardText
         return false;
     }
 
+    /// <returns>Дескриптор памяти с текстом или 0, если выделить/заблокировать память не удалось.</returns>
     private static nint AllocText(string text)
     {
         var bytes = (nuint)((text.Length + 1) * sizeof(char));
         var handle = Native.GlobalAlloc(Native.GMEM_MOVEABLE, bytes);
         if (handle == 0)
         {
-            throw new OutOfMemoryException("GlobalAlloc для буфера обмена.");
+            return 0;
         }
 
         var p = (char*)Native.GlobalLock(handle);
+        if (p == null)
+        {
+            Native.GlobalFree(handle);
+            return 0;
+        }
+
         text.AsSpan().CopyTo(new Span<char>(p, text.Length));
         p[text.Length] = '\0';
         Native.GlobalUnlock(handle);
@@ -138,7 +156,14 @@ public static unsafe class ClipboardText
             return;
         }
 
-        *(uint*)Native.GlobalLock(handle) = value;
+        var p = (uint*)Native.GlobalLock(handle);
+        if (p == null)
+        {
+            Native.GlobalFree(handle);
+            return;
+        }
+
+        *p = value;
         Native.GlobalUnlock(handle);
         if (Native.SetClipboardData(format, handle) == 0)
         {

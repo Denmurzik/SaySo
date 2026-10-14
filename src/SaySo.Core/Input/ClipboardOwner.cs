@@ -2,7 +2,10 @@ using SaySo.Core.Interop;
 
 namespace SaySo.Core.Input;
 
-/// <summary>Скрытое message-only окно предопределённого класса Static — владелец буфера обмена.</summary>
+/// <summary>
+/// Скрытое message-only окно предопределённого класса Static — владелец буфера обмена.
+/// Окно привязано к создавшему его потоку: <see cref="Destroy"/> вызывается на том же потоке, а буфер открывается на нём же.
+/// </summary>
 public static unsafe class ClipboardOwner
 {
     public static nint Create()

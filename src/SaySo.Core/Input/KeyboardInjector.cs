@@ -19,7 +19,12 @@ public static class KeyboardInjector
         Key(VkControl, up: true),
     ];
 
-    public static void SendCtrlV() => Send(BuildCtrlV());
+    /// <returns>true, только если система приняла все 4 события (иначе — защищённый рабочий стол, BlockInput и т.п.).</returns>
+    public static bool SendCtrlV()
+    {
+        var inputs = BuildCtrlV();
+        return Send(inputs) == inputs.Length;
+    }
 
     /// <summary>Неназначенная клавиша 0xE8: не даёт открыться «Пуску»/меню, если в комбинации Win или Alt.</summary>
     public static void SendMenuMask() => Send([Key(0xE8, up: false), Key(0xE8, up: true)]);
@@ -50,11 +55,12 @@ public static class KeyboardInjector
         },
     };
 
-    private static unsafe void Send(Native.INPUT[] inputs)
+    /// <returns>Сколько событий принято системой.</returns>
+    private static unsafe int Send(Native.INPUT[] inputs)
     {
         fixed (Native.INPUT* p = inputs)
         {
-            Native.SendInput((uint)inputs.Length, p, sizeof(Native.INPUT));
+            return (int)Native.SendInput((uint)inputs.Length, p, sizeof(Native.INPUT));
         }
     }
 }
