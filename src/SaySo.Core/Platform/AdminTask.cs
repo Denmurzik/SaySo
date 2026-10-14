@@ -50,9 +50,19 @@ public static class AdminTask
     {
         var user = Environment.UserDomainName + "\\" + Environment.UserName;
         var file = Path.Combine(Path.GetTempPath(), $"sayso-task-{Guid.NewGuid():N}.xml");
-        File.WriteAllText(file, BuildXml(exePath, user), Encoding.Unicode);
+        var content = Encoding.Unicode.GetPreamble().Concat(Encoding.Unicode.GetBytes(BuildXml(exePath, user))).ToArray();
+        File.WriteAllBytes(file, content);
         try
         {
+            // Пока идёт schtasks /Create, файл открыт на чтение без разрешения записи и удаления: подменить XML
+            // (а значит и запускаемую с правами администратора команду) другим процессом уже нельзя.
+            using var guard = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.Read);
+            var check = new byte[content.Length + 1];
+            if (guard.Read(check, 0, check.Length) != content.Length || !check.AsSpan(0, content.Length).SequenceEqual(content))
+            {
+                return -1; // файл успели изменить между записью и блокировкой
+            }
+
             return Schtasks("/Create", "/TN", TaskName, "/XML", file, "/F");
         }
         finally
@@ -88,11 +98,12 @@ public static class AdminTask
                 return -1;
             }
 
-            process.StandardOutput.ReadToEnd();
-            process.StandardError.ReadToEnd();
+            // Потоки читаются асинхронно, иначе синхронное чтение блокировало бы поток до выхода schtasks и тайм-аут не работал.
+            _ = process.StandardOutput.ReadToEndAsync();
+            _ = process.StandardError.ReadToEndAsync();
             if (!process.WaitForExit(15_000))
             {
-                process.Kill();
+                process.Kill(entireProcessTree: true);
                 return -1;
             }
 

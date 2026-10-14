@@ -15,9 +15,7 @@ namespace SaySo.Daemon;
 internal sealed class DaemonHost : IDisposable
 {
     private const uint CmdInsertLast = 1, CmdCopyLast = 2, CmdSettings = 3, CmdPause = 4, CmdExit = 5;
-
-    /// <summary>Windows молча снимает WH_KEYBOARD_LL после тайм-аута колбэка — хук периодически пересоздаётся.</summary>
-    private static readonly TimeSpan HookWatchdogInterval = TimeSpan.FromMinutes(5);
+    private const string MutexName = @"Local\SaySo.Daemon";
 
     private readonly AppPaths _paths;
     private readonly SettingsStore _settingsStore;
@@ -27,7 +25,6 @@ internal sealed class DaemonHost : IDisposable
     private readonly DaemonWindow _window;
     private readonly TrayIcon _tray;
     private readonly TextInserter _inserter;
-    private readonly IDisposable _hookWatchdog;
     private HotkeyListener? _hotkey;
     private TrayIcons _icons;
     private TrayState _trayState = TrayState.Idle;
@@ -53,15 +50,10 @@ internal sealed class DaemonHost : IDisposable
         _window.TrayEvent += OnTrayEvent;
         _window.IpcMessage += OnIpc;
         _window.CloseRequested += OnCloseRequested;
-        _window.TaskbarCreated += () => _tray.Recreate();
+        _window.TaskbarCreated += OnTaskbarCreated;
         _window.SessionLockChanged += OnSessionLockChanged;
-        _window.ThemeChanged += () =>
-        {
-            _icons.Dispose();
-            _icons = TrayIcons.Create();
-            UpdateTray(_trayState);
-        };
-        _hookWatchdog = _window.SetTimer(HookWatchdogInterval, OnHookWatchdog, repeat: true);
+        _window.PowerResumed += () => TryReinstallHotkey("выход из сна");
+        _window.ThemeChanged += RefreshIcons;
         UpdateTray(TrayState.Idle);
     }
 
@@ -72,60 +64,157 @@ internal sealed class DaemonHost : IDisposable
 
     public static int Run()
     {
-        using var mutex = new Mutex(initiallyOwned: true, @"Local\SaySo.Daemon", out var createdNew);
-        if (!createdNew)
+        var mutex = AcquireInstance();
+        if (mutex is null)
         {
-            IpcClient.Send(IpcProtocol.OpenSettings);
             return 0;
         }
 
-        var paths = AppPaths.Default;
-        paths.EnsureRoot();
-        Log.FilePath = Path.Combine(paths.Root, "sayso.log");
-        var store = new SettingsStore(paths);
-        var firstRun = !File.Exists(paths.SettingsFile);
-        var settings = store.Load();
-        if (firstRun)
+        try
         {
-            store.Save(settings);
-        }
-
-        if (settings.RunAsAdmin && !ProcessIntegrity.IsElevated && AdminTask.Exists())
-        {
-            Log.Info("Перезапуск с правами администратора через Планировщик");
-            mutex.ReleaseMutex();
-            AdminTask.Run();
-            return 0;
-        }
-
-        int code;
-        using (var host = new DaemonHost(paths, store, settings))
-        {
-            host.SyncAutostart();
-            Log.Info($"Демон запущен (elevated={ProcessIntegrity.IsElevated})");
-            var secrets = host._secretStore.Load();
-            if (firstRun || (secrets.GeminiApiKeys.Count == 0 && string.IsNullOrWhiteSpace(secrets.GroqApiKey)))
+            var paths = AppPaths.Default;
+            paths.EnsureRoot();
+            Log.FilePath = Path.Combine(paths.Root, "sayso.log");
+            var store = new SettingsStore(paths);
+            var firstRun = !File.Exists(paths.SettingsFile);
+            var settings = store.Load();
+            if (firstRun)
             {
-                host.OpenSettings();
+                store.Save(settings);
             }
 
-            code = MessageLoop.Run();
-            Log.Info("Демон завершён");
-        }
+            if (settings.RunAsAdmin && !ProcessIntegrity.IsElevated && AdminTask.Exists())
+            {
+                Log.Info("Перезапуск с правами администратора через Планировщик");
+                // Мьютекс нужно освободить и закрыть: элевированный экземпляр, запущенный Планировщиком, должен его создать.
+                ReleaseInstance(mutex);
+                mutex = null;
+                var exitCode = AdminTask.Run();
+                if (exitCode == 0)
+                {
+                    return 0;
+                }
 
-        // Мьютекс отпускается после снятия хука и значка: новый экземпляр не застанет старый хук.
-        mutex.ReleaseMutex();
-        return code;
+                Log.Info($"Планировщик не запустил задачу (код {exitCode}) — запуск без повышения прав");
+                mutex = AcquireInstance();
+                if (mutex is null)
+                {
+                    return 0;
+                }
+            }
+
+            int code;
+            using (var host = new DaemonHost(paths, store, settings))
+            {
+                host.SyncAutostart();
+                Log.Info($"Демон запущен (elevated={ProcessIntegrity.IsElevated})");
+                var secrets = host._secretStore.Load();
+                if (firstRun || (secrets.GeminiApiKeys.Count == 0 && string.IsNullOrWhiteSpace(secrets.GroqApiKey)))
+                {
+                    host.OpenSettings();
+                }
+
+                code = MessageLoop.Run();
+                Log.Info("Демон завершён");
+            }
+
+            return code;
+        }
+        finally
+        {
+            // Мьютекс отпускается после снятия хука и значка: новый экземпляр не застанет старый хук.
+            if (mutex is not null)
+            {
+                ReleaseInstance(mutex);
+            }
+        }
     }
 
     public void Dispose()
     {
-        _hookWatchdog.Dispose();
         _hotkey?.Dispose();
         _hotkey = null;
         _tray.Dispose();
         _icons.Dispose();
         _window.Dispose();
+    }
+
+    /// <returns>Мьютекс единственного экземпляра или null, если уже работает другой (ему отправлено OpenSettings).</returns>
+    private static Mutex? AcquireInstance()
+    {
+        Mutex mutex;
+        bool createdNew;
+        try
+        {
+            mutex = new Mutex(initiallyOwned: true, MutexName, out createdNew);
+        }
+        catch (UnauthorizedAccessException)
+        {
+            // Мьютекс создан элевированным демоном (его DACL не пускает обычный процесс) — значит, демон уже работает.
+            SendOpenSettings();
+            return null;
+        }
+
+        if (createdNew)
+        {
+            return mutex;
+        }
+
+        if (SendOpenSettings())
+        {
+            mutex.Dispose();
+            return null;
+        }
+
+        // Окно демона не отвечает: возможно, предыдущий экземпляр как раз завершается — ждём освобождения имени.
+        bool acquired;
+        try
+        {
+            acquired = mutex.WaitOne(TimeSpan.FromSeconds(5));
+        }
+        catch (AbandonedMutexException)
+        {
+            acquired = true; // предыдущий экземпляр умер, не отпустив мьютекс
+        }
+
+        if (acquired)
+        {
+            return mutex;
+        }
+
+        mutex.Dispose();
+        return null;
+    }
+
+    private static void ReleaseInstance(Mutex mutex)
+    {
+        try
+        {
+            mutex.ReleaseMutex();
+        }
+        catch (ApplicationException)
+        {
+            // мьютекс этому потоку не принадлежит — закрываем только дескриптор
+        }
+
+        mutex.Dispose();
+    }
+
+    /// <summary>Окно демона появляется не сразу после создания мьютекса, поэтому несколько секунд повторяем отправку.</summary>
+    private static bool SendOpenSettings()
+    {
+        var timer = Stopwatch.StartNew();
+        while (!IpcClient.Send(IpcProtocol.OpenSettings))
+        {
+            if (timer.Elapsed >= TimeSpan.FromSeconds(3))
+            {
+                return false;
+            }
+
+            Thread.Sleep(200);
+        }
+
+        return true;
     }
 
     // Заглушка до задачи 16: только индикация.
@@ -159,13 +248,25 @@ internal sealed class DaemonHost : IDisposable
     {
         switch (trayEvent)
         {
+            case Native.WM_LBUTTONUP:
+                // Щелчок по значку — путь восстановления для пользователя, если система сняла хук.
+                TryReinstallHotkey("щелчок по значку");
+                break;
             case Native.WM_LBUTTONDBLCLK:
                 OpenSettings();
                 break;
             case Native.WM_CONTEXTMENU:
+                TryReinstallHotkey("меню значка");
                 ShowMenu();
                 break;
         }
+    }
+
+    private void OnTaskbarCreated()
+    {
+        // Проводник перезапущен: значок добавляется заново, а наборы значков пересоздаются под DPI новой панели задач.
+        _tray.Recreate();
+        RefreshIcons();
     }
 
     private void ShowMenu()
@@ -189,13 +290,18 @@ internal sealed class DaemonHost : IDisposable
                 _ = InsertLastAsync(last.Text);
                 break;
             case CmdCopyLast when last is not null:
-                ClipboardText.SetText(_window.Handle, last.Text, excludeFromHistory: false);
+                if (!ClipboardText.SetText(_window.Handle, last.Text, excludeFromHistory: false))
+                {
+                    Log.Info("Скопировать последнее: буфер обмена недоступен");
+                }
+
                 break;
             case CmdSettings:
                 OpenSettings();
                 break;
             case CmdPause:
                 _paused = !_paused;
+                _ipcSuspended = false; // ручная пауза/возобновление отменяет «зависшую» приостановку от окна настроек
                 ApplySuspension();
                 UpdateTray(_paused ? TrayState.Paused : TrayState.Idle);
                 break;
@@ -228,7 +334,9 @@ internal sealed class DaemonHost : IDisposable
         {
             case IpcProtocol.ReloadSettings:
                 _settings = _settingsStore.Load();
+                _ipcSuspended = false; // окно настроек закончило запись комбинации (или умерло, не прислав Resume)
                 ReconfigureHotkey();
+                ApplySuspension();
                 SyncAutostart();
                 UpdateTray(_paused ? TrayState.Paused : TrayState.Idle);
                 break;
@@ -267,12 +375,30 @@ internal sealed class DaemonHost : IDisposable
             return;
         }
 
-        // После разблокировки Windows могла снять хук — ставим новый.
-        RecreateHotkey();
+        TryReinstallHotkey("разблокировка сеанса");
     }
 
-    // Сторожок хука: пересоздаём его только в простое и когда ни одна клавиша комбинации не нажата.
-    private void OnHookWatchdog()
+    private HotkeyListener CreateListener() =>
+        new(_window.Handle, DaemonWindow.HotkeyMessage, _settings.Hotkey.Keys, _settings.Hotkey.TapThresholdMs);
+
+    private void CreateHotkey()
+    {
+        try
+        {
+            _hotkey = CreateListener();
+            ApplySuspension();
+        }
+        catch (Exception e) when (e is InvalidOperationException or Win32Exception or ArgumentException)
+        {
+            // Без хука демон остаётся жить (значок, меню, IPC); следующее событие переустановки попробует снова.
+            Log.Error("Установка хука клавиатуры", e);
+            _hotkey = null;
+        }
+    }
+
+    // Windows молча снимает WH_KEYBOARD_LL после тайм-аута колбэка. Таймеров в простое нет (§1/§11):
+    // хук переустанавливается только по событиям (разблокировка, выход из сна, щелчок по значку), и только в простое.
+    private void TryReinstallHotkey(string reason)
     {
         if (_trayState is not (TrayState.Idle or TrayState.Paused))
         {
@@ -284,30 +410,20 @@ internal sealed class DaemonHost : IDisposable
             return;
         }
 
-        RecreateHotkey();
-    }
-
-    private void CreateHotkey()
-    {
+        var old = _hotkey;
+        old?.Dispose();
         try
         {
-            _hotkey = new HotkeyListener(_window.Handle, DaemonWindow.HotkeyMessage, _settings.Hotkey.Keys, _settings.Hotkey.TapThresholdMs);
+            _hotkey = CreateListener();
             ApplySuspension();
+            Log.Info($"Хук клавиатуры переустановлен ({reason})");
         }
         catch (Exception e) when (e is InvalidOperationException or Win32Exception or ArgumentException)
         {
-            // Без хука демон остаётся жить (значок, меню, IPC); следующий тик сторожка попробует снова.
-            Log.Error("Установка хука клавиатуры", e);
-            _hotkey = null;
+            // Например, поток старого хука не завершился и он ещё занимает единственный слот: остаёмся на прежнем слушателе.
+            Log.Error($"Переустановка хука клавиатуры ({reason})", e);
+            _hotkey = old;
         }
-    }
-
-    private void RecreateHotkey()
-    {
-        _hotkey?.Dispose();
-        _hotkey = null;
-        CreateHotkey();
-        Log.Info(_hotkey is null ? "Хук клавиатуры не пересоздан" : "Хук клавиатуры пересоздан");
     }
 
     private void ReconfigureHotkey()
@@ -333,9 +449,12 @@ internal sealed class DaemonHost : IDisposable
 
     private void OpenSettings()
     {
+        // Окно настроек запускается заново — «зависшая» приостановка от прежнего окна больше не нужна.
+        _ipcSuspended = false;
+        ApplySuspension();
         try
         {
-            Process.Start(new ProcessStartInfo(ExePath, "--settings") { UseShellExecute = false });
+            Process.Start(new ProcessStartInfo(ExePath, "--settings") { UseShellExecute = false })?.Dispose();
         }
         catch (Exception e) when (e is Win32Exception or InvalidOperationException)
         {
@@ -358,6 +477,15 @@ internal sealed class DaemonHost : IDisposable
         {
             Log.Error("Автозапуск", e);
         }
+    }
+
+    // Новые значки создаются и выставляются до уничтожения старых: трей не остаётся с освобождённым HICON.
+    private void RefreshIcons()
+    {
+        var old = _icons;
+        _icons = TrayIcons.Create();
+        UpdateTray(_trayState);
+        old.Dispose();
     }
 
     private void UpdateTray(TrayState state)

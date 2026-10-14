@@ -15,6 +15,9 @@ internal sealed class DaemonWindow : IDisposable
     public const uint HotkeyMessage = Native.WM_APP + 2;
     public const uint TrayMessage = Native.WM_APP + 3;
 
+    private const uint WM_POWERBROADCAST = 0x0218;
+    private const uint PBT_APMRESUMEAUTOMATIC = 0x0012;
+
     private readonly MessageWindow _window;
     private readonly Dictionary<uint, string> _ipc = [];
     private readonly Dictionary<nuint, (Action Callback, bool Repeat)> _timers = [];
@@ -34,6 +37,9 @@ internal sealed class DaemonWindow : IDisposable
 
         _taskbarCreated = Native.RegisterWindowMessageW("TaskbarCreated");
         AllowFromLowerIntegrity(_taskbarCreated);
+        // Элевированный демон иначе не получит клики по значку от Проводника и смену темы от системы.
+        AllowFromLowerIntegrity(TrayMessage);
+        AllowFromLowerIntegrity(Native.WM_SETTINGCHANGE);
         Native.WTSRegisterSessionNotification(_window.Handle, Native.NOTIFY_FOR_THIS_SESSION);
     }
 
@@ -50,6 +56,9 @@ internal sealed class DaemonWindow : IDisposable
     public event Action<bool>? SessionLockChanged;
 
     public event Action? ThemeChanged;
+
+    /// <summary>Выход из сна/гибернации (PBT_APMRESUMEAUTOMATIC): хук мог быть снят системой.</summary>
+    public event Action? PowerResumed;
 
     /// <summary>
     /// WM_CLOSE (например, <c>taskkill</c> без /F): штатное завершение, как по IPC-сообщению Quit.
@@ -140,6 +149,13 @@ internal sealed class DaemonWindow : IDisposable
                 }
 
                 return 0;
+            case WM_POWERBROADCAST:
+                if (wParam == PBT_APMRESUMEAUTOMATIC)
+                {
+                    PowerResumed?.Invoke();
+                }
+
+                return 1; // TRUE
             case Native.WM_SETTINGCHANGE:
                 if (lParam != 0 && System.Runtime.InteropServices.Marshal.PtrToStringUni(lParam) == "ImmersiveColorSet")
                 {

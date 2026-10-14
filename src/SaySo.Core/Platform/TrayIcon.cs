@@ -38,11 +38,17 @@ internal sealed unsafe class TrayIcon(nint hwnd, uint callbackMessage) : IDispos
     /// <summary>После перезапуска Проводника значок нужно добавить заново.</summary>
     public void Recreate()
     {
-        _added = false;
-        if (_configured)
+        if (!_configured)
         {
-            Set(_icon, _tooltip);
+            return;
         }
+
+        // Если запись в трее ещё жива (TaskbarCreated без реального перезапуска, или NIM_ADD «не удался», но значок есть),
+        // NIM_ADD дал бы ошибку и _added навсегда остался бы false — поэтому сначала удаляем.
+        var data = Build();
+        Native.Shell_NotifyIconW(Native.NIM_DELETE, &data);
+        _added = false;
+        Set(_icon, _tooltip);
     }
 
     public void Dispose()

@@ -42,7 +42,7 @@ internal static unsafe class GlyphIcon
             var px = (uint*)bits;
             for (var i = 0; i < size * size; i++)
             {
-                px[i] = alpha is null ? 0u : Premultiplied(rgb, alpha[i] / 255f);
+                px[i] = alpha is null ? 0u : Straight(rgb, alpha[i] / 255f);
             }
 
             if (badgeRgb is { } badge)
@@ -59,7 +59,7 @@ internal static unsafe class GlyphIcon
                         var c = Math.Clamp(r - MathF.Sqrt(dx * dx + dy * dy) + 0.5f, 0f, 1f);
                         if (c > 0f)
                         {
-                            px[y * size + x] = Lerp(px[y * size + x], Premultiplied(badge, 1f), c);
+                            px[y * size + x] = Over(px[y * size + x], badge, c);
                         }
                     }
                 }
@@ -105,17 +105,26 @@ internal static unsafe class GlyphIcon
 
     private static void Fail(string call) => Log.Info($"GlyphIcon: сбой {call}, значок не создан");
 
-    private static uint Premultiplied(uint rgb, float a)
-    {
-        var r = (rgb >> 16) & 0xFF;
-        var g = (rgb >> 8) & 0xFF;
-        var b = rgb & 0xFF;
-        return ((uint)(a * 255 + 0.5f) << 24) | ((uint)(r * a + 0.5f) << 16) | ((uint)(g * a + 0.5f) << 8) | (uint)(b * a + 0.5f);
-    }
+    // HICON из 32-битного растра ожидает непремультиплицированную альфу (как GDI+ GetHicon): иначе по краям тёмная кайма.
+    private static uint Straight(uint rgb, float a) => ((uint)(a * 255 + 0.5f) << 24) | (rgb & 0xFFFFFF);
 
-    private static uint Lerp(uint from, uint to, float t)
+    /// <summary>Накладывает цвет <paramref name="rgb"/> с покрытием <paramref name="coverage"/> на непремультиплицированный пиксель.</summary>
+    private static uint Over(uint dst, uint rgb, float coverage)
     {
-        uint Ch(int shift) => (uint)((((from >> shift) & 0xFF) * (1 - t)) + (((to >> shift) & 0xFF) * t) + 0.5f);
-        return (Ch(24) << 24) | (Ch(16) << 16) | (Ch(8) << 8) | Ch(0);
+        var dstA = (dst >> 24) / 255f;
+        var outA = coverage + (dstA * (1 - coverage));
+        if (outA <= 0f)
+        {
+            return 0;
+        }
+
+        uint Ch(int shift)
+        {
+            var src = (rgb >> shift) & 0xFF;
+            var old = (dst >> shift) & 0xFF;
+            return (uint)Math.Clamp((((src * coverage) + (old * dstA * (1 - coverage))) / outA) + 0.5f, 0f, 255f);
+        }
+
+        return ((uint)(outA * 255 + 0.5f) << 24) | (Ch(16) << 16) | (Ch(8) << 8) | Ch(0);
     }
 }
