@@ -11,7 +11,7 @@
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
         <Grid x:Name="AppTitleBar" Padding="16,0,0,0">
-            <TextBlock x:Name="AppTitleText" VerticalAlignment="Center" Style="{StaticResource CaptionTextBlockStyle}" />
+            <TextBlock x:Name="AppTitleText" VerticalAlignment="Center" FontWeight="Bold" Style="{StaticResource CaptionTextBlockStyle}" />
         </Grid>
         <NavigationView
             x:Name="Nav"
