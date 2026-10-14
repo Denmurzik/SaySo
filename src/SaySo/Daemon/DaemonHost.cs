@@ -18,6 +18,7 @@ namespace SaySo.Daemon;
 internal sealed class DaemonHost : IDisposable
 {
     private const uint CmdInsertLast = 1, CmdCopyLast = 2, CmdSettings = 3, CmdPause = 4, CmdExit = 5;
+    private static readonly TimeSpan QuitWait = TimeSpan.FromSeconds(10);
     private const string MutexName = @"Local\SaySo.Daemon";
 
     private readonly AppPaths _paths;
@@ -48,7 +49,10 @@ internal sealed class DaemonHost : IDisposable
     private bool _failingSession;
     private bool _disposing;
     private string? _pendingReinstall;
+    private nint _pressTarget;
     private nint _dictationTarget;
+    private bool _quitAfterSession;
+    private IDisposable? _quitTimer;
 
     private DaemonHost(AppPaths paths, SettingsStore settingsStore, AppSettings settings)
     {
@@ -70,7 +74,7 @@ internal sealed class DaemonHost : IDisposable
             new DictationPipeline(engines),
             (onData, onError) => new WasapiAudioSource(_settings.MicrophoneDeviceId, onData, onError),
             _overlay,
-            new InserterOutput(_inserter),
+            new InserterOutput(_inserter, () => _dictationTarget = _pressTarget),
             new DaemonFeedback(OnDictationTray),
             new WindowScheduler(_window, OnSchedulingFailed),
             _history,
@@ -95,8 +99,8 @@ internal sealed class DaemonHost : IDisposable
     }
 
     /// <summary>
-    /// Окно для «Вставить последнее»: окно переднего плана в момент нажатия горячей клавиши последней диктовки
-    /// (до первой диктовки — окно последней вставки).
+    /// Окно для «Вставить последнее»: окно переднего плана в момент нажатия горячей клавиши последней диктовки,
+    /// давшей текст (отменённые, короткие и неудавшиеся записи не в счёт). До первой такой диктовки — окно последней вставки.
     /// </summary>
     internal nint LastTarget => _dictationTarget != 0 ? _dictationTarget : _inserter.Last?.Window ?? 0;
 
@@ -289,7 +293,7 @@ internal sealed class DaemonHost : IDisposable
         Log.Info($"Горячая клавиша: {action}");
         if (action == HotkeyAction.StartRecording && _dictation.State == DictationState.Idle)
         {
-            _dictationTarget = Native.GetForegroundWindow(); // «Вставить последнее» целится в окно, где диктовали
+            _pressTarget = Native.GetForegroundWindow(); // станет целью «Вставить последнее», только если диктовка даст текст
         }
 
         _ = ObserveAsync(_dictation.HandleAsync(action), "Диктовка");
@@ -437,7 +441,28 @@ internal sealed class DaemonHost : IDisposable
     }
 
     // Выход из цикла сообщений; хук и значок снимает Dispose сразу после него.
-    private static void RequestQuit() => Native.PostQuitMessage(0);
+    // Во время «Finishing» текст ещё вставляется, а буфер обмена восстанавливается — выходим по окончании сессии,
+    // но не дольше QuitWait (страховка от зависшего движка). Повторный запрос выхода — немедленный выход.
+    private void RequestQuit()
+    {
+        if (_dictation.State != DictationState.Finishing || _quitAfterSession)
+        {
+            Native.PostQuitMessage(0);
+            return;
+        }
+
+        _quitAfterSession = true;
+        Log.Info("Выход отложен до завершения диктовки");
+        try
+        {
+            _quitTimer = _window.SetTimer(QuitWait, () => Native.PostQuitMessage(0));
+        }
+        catch (Win32Exception e)
+        {
+            Log.Error("Страховочный таймер выхода", e);
+            Native.PostQuitMessage(0); // без страховки ждать сессию нельзя
+        }
+    }
 
     private void OnSessionLockChanged(bool locked)
     {
@@ -515,6 +540,12 @@ internal sealed class DaemonHost : IDisposable
             return;
         }
 
+        if (_quitAfterSession)
+        {
+            Native.PostQuitMessage(0);
+            return;
+        }
+
         ScheduleTrim(TimeSpan.FromSeconds(2));
         ApplyPendingHotkeyChanges();
     }
@@ -542,13 +573,16 @@ internal sealed class DaemonHost : IDisposable
         _failingSession = true;
         try
         {
-            await _dictation.HandleAsync(HotkeyAction.Cancel);
+            // Синхронная часть отмены гасит плашку и значок; ошибку показываем сразу после неё, не дожидаясь закрытия сессии движка.
+            var cancel = _dictation.HandleAsync(HotkeyAction.Cancel);
             _overlay.ShowMessage("Не удалось запустить запись — подробности в журнале", OverlayTone.Error);
             UpdateTray(TrayState.Error);
             if (_settings.SoundsEnabled)
             {
                 SoundPlayer.Play(SoundKind.Error);
             }
+
+            await cancel;
         }
         catch (Exception e)
         {

@@ -56,10 +56,14 @@ internal sealed class WasapiAudioSource(string? deviceId, Action<ReadOnlySpan<by
     }
 }
 
-internal sealed class InserterOutput(TextInserter inserter) : ITextOutput
+/// <param name="onInsert">Вызывается перед вставкой: текст получен и сохранён в истории — сессия состоялась.</param>
+internal sealed class InserterOutput(TextInserter inserter, Action onInsert) : ITextOutput
 {
-    public Task<InsertOutcome> InsertAsync(string text, IReadOnlyCollection<int> keysToRelease) =>
-        inserter.InsertAsync(text, keysToRelease);
+    public Task<InsertOutcome> InsertAsync(string text, IReadOnlyCollection<int> keysToRelease)
+    {
+        onInsert();
+        return inserter.InsertAsync(text, keysToRelease);
+    }
 }
 
 internal sealed class DaemonFeedback(Action<TrayState> setTray) : IDictationFeedback
