@@ -79,6 +79,17 @@ public class GroqClientTests
         Assert.Equal("ну встретимся в пятницу нет в субботу", messages[1].GetProperty("content").GetString());
     }
 
+    [Fact]
+    public async Task Cleanup_TruncatedByLength_IsProtocolError()
+    {
+        var (client, handler) = Create();
+        handler.Enqueue(HttpStatusCode.OK,
+            """{"choices":[{"message":{"content":"Встретимся в суб"},"finish_reason":"length"}]}""");
+        var ex = await Assert.ThrowsAsync<TranscriptionException>(() =>
+            client.CleanupAsync("текст", "openai/gpt-oss-120b", TestContext.Current.CancellationToken));
+        Assert.Equal(EngineErrorKind.Protocol, ex.Kind);
+    }
+
     [Theory]
     [InlineData(HttpStatusCode.TooManyRequests, EngineErrorKind.QuotaExceeded)]
     [InlineData(HttpStatusCode.Unauthorized, EngineErrorKind.AuthFailed)]

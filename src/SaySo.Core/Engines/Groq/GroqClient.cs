@@ -105,6 +105,14 @@ public sealed class GroqClient(HttpClient http, string baseUrl, string apiKey)
             && message.TryGetProperty("content", out var content)
             && content.ValueKind == JsonValueKind.String)
         {
+            // Обрезанный по лимиту токенов ответ нельзя выдавать за итог — движок откатится на сырой текст.
+            if (choices[0].TryGetProperty("finish_reason", out var finish)
+                && finish.ValueKind == JsonValueKind.String
+                && finish.GetString() == "length")
+            {
+                throw new TranscriptionException(EngineErrorKind.Protocol, "Groq: ответ очистки обрезан по лимиту токенов.");
+            }
+
             return content.GetString()!.Trim();
         }
 

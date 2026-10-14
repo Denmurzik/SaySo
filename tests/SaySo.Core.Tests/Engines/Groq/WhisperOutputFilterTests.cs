@@ -19,5 +19,7 @@ public class WhisperOutputFilterTests
     [InlineData("Продолжение следует, сказал он, и вышел.")]
     [InlineData("Спасибо за просмотр презентации, коллеги, вопросы?")]
     [InlineData("Купить молоко.")]
+    [InlineData("Спасибо за просмотр. Теперь перейдём к следующему слайду")]
+    [InlineData("Продолжение следует в следующей главе про архитектуру и тестирование")]
     public void RealSpeech_IsKept(string input) => Assert.Equal(input, WhisperOutputFilter.Clean(input));
 }

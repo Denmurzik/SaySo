@@ -43,6 +43,17 @@ public class GroqFallbackEngineTests
     }
 
     [Fact]
+    public async Task TruncatedCleanup_ReturnsRawText()
+    {
+        var handler = new FakeHttpHandler();
+        handler.Enqueue(HttpStatusCode.OK, """{"text":"сырой текст"}""");
+        handler.Enqueue(HttpStatusCode.OK, """{"choices":[{"message":{"content":"Сырой те"},"finish_reason":"length"}]}""");
+        var engine = new GroqFallbackEngine(new GroqClient(new HttpClient(handler), "https://g.test/v1", "k"), Opts());
+
+        Assert.Equal("сырой текст", await engine.TranscribeAsync([1, 2], TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
     public async Task Hallucination_SkipsCleanupAndReturnsEmpty()
     {
         var handler = new FakeHttpHandler();
