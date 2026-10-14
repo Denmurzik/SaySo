@@ -311,9 +311,9 @@ public sealed class UpdateCoordinator(
 
     private void ShowBalloonIfNeeded(ReleaseInfo release)
     {
-        if (_balloonVersion == release.Version || !UpdatePolicy.ShouldNotify(store.Load(), release.Version))
+        if (!UpdatePolicy.ShouldNotify(store.Load(), release.Version))
         {
-            return; // уже показано в этом запуске или пользователь отказался от напоминаний об этой версии
+            return; // пользователь закрыл уведомление об этой версии: остаётся пункт меню и страница «О программе»
         }
 
         if (!host.IsDictationIdle)

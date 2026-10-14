@@ -385,8 +385,9 @@ public sealed class UpdateCoordinatorTests : IDisposable
     }
 
     [Fact]
-    public async Task SameVersionFoundTwiceWhileBalloonIsUp_ShowsItOnce()
+    public async Task BalloonNeverClosed_ReappearsAtTheNextDailyCheck()
     {
+        // Уведомление могли не показать («Не беспокоить») или не заметить: пока пользователь не закрыл его сам, напоминаем раз в сутки.
         ServeRelease();
         StartAndFire();
         await Settle(() => _host.Finished == 1);
@@ -396,7 +397,7 @@ public sealed class UpdateCoordinatorTests : IDisposable
         _host.FireTimer();
         await Settle(() => _host.Finished == 2);
 
-        Assert.Single(_host.Balloons);
+        Assert.Equal(2, _host.Balloons.Count);
     }
 
     [Fact]
