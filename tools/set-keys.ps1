@@ -1,7 +1,8 @@
-﻿# Сохраняет ключи Gemini и Groq в %LOCALAPPDATA%\SaySo\secrets.bin, зашифровав их DPAPI текущего пользователя.
-# Формат совместим с SaySo (JSON {"geminiApiKey","groqApiKey"}, дополнительная энтропия "SaySo.v1").
+﻿# Сохраняет ключи Gemini (можно несколько) и Groq в %LOCALAPPDATA%\SaySo\secrets.bin,
+# зашифровав их DPAPI текущего пользователя. Формат совместим с SaySo:
+# JSON {"geminiApiKeys":[...],"groqApiKey":"..."}, дополнительная энтропия "SaySo.v1".
 # Запуск в своём терминале: powershell -NoProfile -File tools\set-keys.ps1
-# Ввод скрыт; пустой ввод оставляет прежний ключ. Ключи нигде не печатаются.
+# Ввод скрыт; пустой ввод оставляет прежние ключи. Ключи нигде не печатаются.
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Security
 
@@ -10,13 +11,13 @@ $file = Join-Path $dir 'secrets.bin'
 $entropy = [Text.Encoding]::UTF8.GetBytes('SaySo.v1')
 $scope = [Security.Cryptography.DataProtectionScope]::CurrentUser
 
-$gemini = $null
+$gemini = @()
 $groq = $null
 if (Test-Path $file) {
     try {
         $plain = [Security.Cryptography.ProtectedData]::Unprotect([IO.File]::ReadAllBytes($file), $entropy, $scope)
         $current = [Text.Encoding]::UTF8.GetString($plain) | ConvertFrom-Json
-        $gemini = $current.geminiApiKey
+        if ($current.geminiApiKeys) { $gemini = @($current.geminiApiKeys) }
         $groq = $current.groqApiKey
     }
     catch {
@@ -31,15 +32,15 @@ function Read-Secret([string]$Prompt) {
     finally { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr) }
 }
 
-$state = { param($v) if ([string]::IsNullOrWhiteSpace($v)) { 'не задан' } else { 'задан' } }
-$newGemini = Read-Secret ("Ключ Gemini ({0}; Enter — оставить)" -f (& $state $gemini))
-$newGroq = Read-Secret ("Ключ Groq ({0}; Enter — оставить)" -f (& $state $groq))
-if ($newGemini) { $gemini = $newGemini }
+$newGemini = Read-Secret ("Ключи Gemini через запятую или пробел (сейчас сохранено: {0}; Enter — оставить)" -f $gemini.Count)
+$newGroq = Read-Secret ("Ключ Groq ({0}; Enter — оставить)" -f $(if ($groq) { 'задан' } else { 'не задан' }))
+if ($newGemini) { $gemini = @($newGemini -split '[,;\s]+' | Where-Object { $_ } | Select-Object -Unique) }
 if ($newGroq) { $groq = $newGroq }
 
-$json = [ordered]@{ geminiApiKey = $gemini; groqApiKey = $groq } | ConvertTo-Json -Compress
+$data = [ordered]@{ geminiApiKeys = @($gemini); groqApiKey = $groq }
+$json = ConvertTo-Json -InputObject $data -Compress
 New-Item -ItemType Directory -Force -Path $dir | Out-Null
 $cipher = [Security.Cryptography.ProtectedData]::Protect([Text.Encoding]::UTF8.GetBytes($json), $entropy, $scope)
 [IO.File]::WriteAllBytes($file, $cipher)
 Write-Host "Сохранено (зашифровано DPAPI): $file"
-Write-Host ("Gemini: {0}, Groq: {1}" -f (& $state $gemini), (& $state $groq))
+Write-Host ("Ключей Gemini: {0}; Groq: {1}" -f $gemini.Count, $(if ($groq) { 'задан' } else { 'не задан' }))
