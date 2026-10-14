@@ -77,7 +77,7 @@ public sealed partial class MicrophonePage : UserControl
                 {
                     Content = string.IsNullOrWhiteSpace(settings.MicrophoneDeviceName)
                         ? "Сохранённый микрофон (сейчас недоступен)"
-                        : $"{settings.MicrophoneDeviceName} — не подключён",
+                        : $"{settings.MicrophoneDeviceName} (не подключён)",
                     Tag = new DeviceChoice(settings.MicrophoneDeviceId, settings.MicrophoneDeviceName),
                 });
                 selected = DevicesBox.Items.Count - 1;

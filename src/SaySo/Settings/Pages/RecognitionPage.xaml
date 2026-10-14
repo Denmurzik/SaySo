@@ -8,12 +8,12 @@
             <InfoBar x:Name="GeminiInfo" IsOpen="False" IsClosable="True" />
             <InfoBar x:Name="GroqInfo" IsOpen="False" IsClosable="True" />
 
-            <TextBlock Text="Gemini 3.5 Transcribe — основной движок" Style="{StaticResource BodyStrongTextBlockStyle}" Margin="0,8,0,0" />
+            <TextBlock Text="Основной движок: Gemini 3.5 Transcribe" Style="{StaticResource BodyStrongTextBlockStyle}" Margin="0,8,0,0" />
             <Border Style="{StaticResource SettingsCard}">
                 <StackPanel Spacing="8">
                     <TextBlock Text="Ключи Gemini API" Style="{StaticResource CardTitle}" />
                     <TextBlock Style="{StaticResource CardDescription}"
-                               Text="Можно добавить несколько ключей (например, от разных аккаунтов Google): когда у текущего кончается лимит, SaySo сам переключается на следующий — даже посреди фразы. Ключи создаются бесплатно в Google AI Studio (из России — через VPN); на бесплатном тарифе Google может использовать запросы для улучшения своих продуктов." />
+                               Text="Можно добавить несколько ключей (например, от разных аккаунтов Google): когда у текущего кончается лимит, SaySo сам переключается на следующий, даже посреди фразы. Ключи создаются бесплатно в Google AI Studio (из России через VPN); на бесплатном тарифе Google может использовать запросы для улучшения своих продуктов." />
                     <StackPanel x:Name="GeminiKeysPanel" Spacing="6" />
                     <StackPanel Orientation="Horizontal" Spacing="12">
                         <Button Content="Добавить ключ" Click="OnAddGeminiKey" />
@@ -25,8 +25,8 @@
                 <StackPanel Spacing="8">
                     <TextBlock Text="Режим" Style="{StaticResource CardTitle}" />
                     <RadioButtons x:Name="ModeButtons" SelectionChanged="OnModeChanged">
-                        <x:String>Умный — без слов-паразитов, с исправлением оговорок и пунктуацией</x:String>
-                        <x:String>Дословно — как сказано</x:String>
+                        <x:String>Умный: без слов-паразитов, с исправлением оговорок и пунктуацией</x:String>
+                        <x:String>Дословно: как сказано</x:String>
                     </RadioButtons>
                 </StackPanel>
             </Border>
@@ -50,7 +50,7 @@
                 </StackPanel>
             </Border>
 
-            <TextBlock Text="Groq — резерв, если Gemini недоступен" Style="{StaticResource BodyStrongTextBlockStyle}" Margin="0,16,0,0" />
+            <TextBlock Text="Резервный движок Groq (если Gemini недоступен)" Style="{StaticResource BodyStrongTextBlockStyle}" Margin="0,16,0,0" />
             <Border Style="{StaticResource SettingsCard}">
                 <Grid ColumnSpacing="16">
                     <Grid.ColumnDefinitions>
@@ -59,7 +59,7 @@
                     </Grid.ColumnDefinitions>
                     <StackPanel VerticalAlignment="Center">
                         <TextBlock Text="Резерв через Groq Whisper" Style="{StaticResource CardTitle}" />
-                        <TextBlock Style="{StaticResource CardDescription}" Text="Если у Gemini исчерпан лимит или нет связи, запись уйдёт в Groq — сказанное не потеряется." />
+                        <TextBlock Style="{StaticResource CardDescription}" Text="Если у Gemini исчерпан лимит или нет связи, запись уйдёт в Groq, и сказанное не потеряется." />
                     </StackPanel>
                     <ToggleSwitch x:Name="FallbackSwitch" Grid.Column="1" OnContent="Вкл" OffContent="Выкл" Toggled="OnFallbackToggled" />
                 </Grid>

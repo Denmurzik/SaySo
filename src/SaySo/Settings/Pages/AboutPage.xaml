@@ -7,7 +7,7 @@
             <TextBlock Text="SaySo" Style="{StaticResource PageTitle}" />
             <TextBlock x:Name="VersionText" Style="{StaticResource CardDescription}" />
             <TextBlock TextWrapping="Wrap"
-                       Text="Зажмите клавишу, говорите, отпустите — очищенный текст появится в активном окне. Распознавание: Gemini 3.5 Transcribe (режим SMART), резерв — Groq Whisper." />
+                       Text="Зажмите клавишу, говорите, отпустите: очищенный текст появится в активном окне. Распознавание: Gemini 3.5 Transcribe (режим SMART), резервный движок Groq Whisper." />
 
             <Border Style="{StaticResource SettingsCard}">
                 <StackPanel Spacing="8">
@@ -29,8 +29,8 @@
                 <StackPanel Spacing="6">
                     <TextBlock Text="Как получить ключ Gemini" Style="{StaticResource CardTitle}" />
                     <TextBlock TextWrapping="Wrap" Style="{StaticResource CardDescription}"
-                               Text="1. Откройте Google AI Studio (из России — с включённым VPN) и войдите в аккаунт Google.&#10;2. Нажмите «Create API key», скопируйте ключ и вставьте в «Распознавание».&#10;3. Свои лимиты бесплатного тарифа смотрите в AI Studio → Rate limits: Google не публикует общих цифр для этой модели." />
-                    <HyperlinkButton Content="Google AI Studio — ключи" NavigateUri="https://aistudio.google.com/apikey" Padding="0" />
+                               Text="1. Откройте Google AI Studio (из России с включённым VPN) и войдите в аккаунт Google.&#10;2. Нажмите «Create API key», скопируйте ключ и вставьте в «Распознавание».&#10;3. Свои лимиты бесплатного тарифа смотрите в AI Studio → Rate limits: Google не публикует общих цифр для этой модели." />
+                    <HyperlinkButton Content="Ключи Google AI Studio" NavigateUri="https://aistudio.google.com/apikey" Padding="0" />
                 </StackPanel>
             </Border>
 

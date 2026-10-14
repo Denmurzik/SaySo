@@ -19,7 +19,7 @@
                     </Grid.ColumnDefinitions>
                     <StackPanel VerticalAlignment="Center">
                         <TextBlock Text="Устройство записи" Style="{StaticResource CardTitle}" />
-                        <TextBlock Style="{StaticResource CardDescription}" Text="Выбранный микрофон используется всегда, когда подключён; иначе — микрофон Windows по умолчанию." />
+                        <TextBlock Style="{StaticResource CardDescription}" Text="Выбранный микрофон используется всегда, когда подключён; иначе берётся микрофон Windows по умолчанию." />
                     </StackPanel>
                     <ComboBox x:Name="DevicesBox" Grid.Column="1" MinWidth="280" VerticalAlignment="Center" PlaceholderText="Загрузка…" SelectionChanged="OnDeviceChanged" />
                 </Grid>
@@ -27,7 +27,7 @@
             <Border Style="{StaticResource SettingsCard}">
                 <StackPanel Spacing="12">
                     <TextBlock Text="Проверка" Style="{StaticResource CardTitle}" />
-                    <TextBlock Style="{StaticResource CardDescription}" Text="Скажите что-нибудь — полоска должна двигаться." />
+                    <TextBlock Style="{StaticResource CardDescription}" Text="Скажите что-нибудь: полоска должна двигаться." />
                     <ProgressBar x:Name="LevelBar" Maximum="100" Height="6" />
                     <ToggleButton x:Name="TestButton" Content="Проверить микрофон" Checked="OnTestChecked" Unchecked="OnTestUnchecked" />
                 </StackPanel>

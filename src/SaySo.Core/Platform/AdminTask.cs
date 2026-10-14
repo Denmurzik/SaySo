@@ -19,7 +19,7 @@ public static class AdminTask
         XElement E(string name, object? content = null) => new(Ns + name, content);
         var task = new XElement(Ns + "Task",
             new XAttribute("version", "1.2"),
-            E("RegistrationInfo", E("Description", "SaySo — голосовая диктовка (запуск с правами администратора)")),
+            E("RegistrationInfo", E("Description", "SaySo: голосовая диктовка (запуск с правами администратора)")),
             E("Triggers", E("LogonTrigger", new object[] { E("Enabled", "true"), E("UserId", userId) })),
             E("Principals", new XElement(Ns + "Principal", new XAttribute("id", "Author"),
                 E("UserId", userId), E("LogonType", "InteractiveToken"), E("RunLevel", "HighestAvailable"))),

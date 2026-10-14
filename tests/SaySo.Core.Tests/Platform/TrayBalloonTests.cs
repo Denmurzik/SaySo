@@ -20,7 +20,7 @@ public class TrayBalloonTests
         tray.Set(77, "SaySo");
         _calls.Clear();
 
-        var shown = tray.ShowBalloon("SaySo", "Доступна версия 0.2.0 — нажмите, чтобы обновить");
+        var shown = tray.ShowBalloon("SaySo", "Доступна версия 0.2.0. Нажмите, чтобы обновить");
 
         Assert.True(shown);
         var call = Assert.Single(_calls);
@@ -28,7 +28,7 @@ public class TrayBalloonTests
         Assert.True((call.Flags & Native.NIF_INFO) != 0);
         Assert.True((call.Flags & Native.NIF_ICON) != 0);
         Assert.Equal(77, call.Icon);
-        Assert.Equal("Доступна версия 0.2.0 — нажмите, чтобы обновить", call.Info);
+        Assert.Equal("Доступна версия 0.2.0. Нажмите, чтобы обновить", call.Info);
         Assert.Equal("SaySo", call.Title);
         Assert.True((call.InfoFlags & Native.NIIF_INFO) != 0);
         Assert.True((call.InfoFlags & Native.NIIF_RESPECT_QUIET_TIME) != 0);
@@ -67,7 +67,7 @@ public class TrayBalloonTests
         tray.ShowBalloon("SaySo", "текст");
         _calls.Clear();
 
-        tray.Set(2, "SaySo — запись…");
+        tray.Set(2, "SaySo: запись…");
 
         var call = Assert.Single(_calls);
         Assert.Equal(0u, call.Flags & Native.NIF_INFO);
