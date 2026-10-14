@@ -123,7 +123,8 @@ public sealed partial class GeneralPage : UserControl
 
     private void FillSoundThemes(string selectedId)
     {
-        var selected = 0;
+        var selected = -1;
+        var fallback = 0;
         foreach (var theme in SoundThemes.All)
         {
             if (theme.Id == selectedId)
@@ -131,10 +132,15 @@ public sealed partial class GeneralPage : UserControl
                 selected = SoundThemeBox.Items.Count;
             }
 
+            if (theme.Id == SoundThemes.DefaultId)
+            {
+                fallback = SoundThemeBox.Items.Count;
+            }
+
             SoundThemeBox.Items.Add(new ComboBoxItem { Content = theme.Name, Tag = theme.Id });
         }
 
-        SoundThemeBox.SelectedIndex = selected;
+        SoundThemeBox.SelectedIndex = selected >= 0 ? selected : fallback;
     }
 
     private void OnSoundThemeChanged(object sender, SelectionChangedEventArgs e)
