@@ -2,6 +2,7 @@ using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
+using SaySo.Core.Audio;
 using SaySo.Core.Diagnostics;
 using SaySo.Core.Hotkeys;
 using SaySo.Core.Platform;
@@ -26,6 +27,7 @@ public sealed partial class GeneralPage : UserControl
         TapSlider.Value = s.Hotkey.TapThresholdMs;
         TapValue.Text = $"{s.Hotkey.TapThresholdMs} мс";
         SoundsSwitch.IsOn = s.SoundsEnabled;
+        FillSoundThemes(s.SoundTheme);
         AutostartSwitch.IsOn = s.AutostartEnabled;
         UpdatesSwitch.IsOn = s.CheckForUpdates;
         AdminSwitch.IsOn = s.RunAsAdmin;
@@ -117,6 +119,47 @@ public sealed partial class GeneralPage : UserControl
 
         _model.Settings.SoundsEnabled = SoundsSwitch.IsOn;
         SaveOrWarn();
+    }
+
+    private void FillSoundThemes(string selectedId)
+    {
+        var selected = 0;
+        foreach (var theme in SoundThemes.All)
+        {
+            if (theme.Id == selectedId)
+            {
+                selected = SoundThemeBox.Items.Count;
+            }
+
+            SoundThemeBox.Items.Add(new ComboBoxItem { Content = theme.Name, Tag = theme.Id });
+        }
+
+        SoundThemeBox.SelectedIndex = selected;
+    }
+
+    private void OnSoundThemeChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_loading || SoundThemeBox.SelectedItem is not ComboBoxItem { Tag: string id })
+        {
+            return;
+        }
+
+        if (id == _model.Settings.SoundTheme)
+        {
+            return; // SelectionChanged приходит и после присвоения SelectedIndex при открытии страницы: это не выбор пользователя
+        }
+
+        _model.Settings.SoundTheme = id;
+        SaveOrWarn();
+    }
+
+    /// <summary>Играет сигнал «начало записи» выбранной темы в этом процессе; выключатель звуков не учитывается.</summary>
+    private void OnSoundPreviewClick(object sender, RoutedEventArgs e)
+    {
+        if (SoundThemeBox.SelectedItem is ComboBoxItem { Tag: string id })
+        {
+            SoundPlayer.Play(SoundKind.Start, id);
+        }
     }
 
     private void OnAutostartToggled(object sender, RoutedEventArgs e)
