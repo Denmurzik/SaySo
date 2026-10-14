@@ -14,7 +14,7 @@ public static class Program
         return options.Mode switch
         {
             LaunchMode.Settings => RunSettings(),
-            LaunchMode.InstallAdminTask => AdminTask.Install(Environment.ProcessPath!),
+            LaunchMode.InstallAdminTask => InstallAdminTask(),
             LaunchMode.RemoveAdminTask => AdminTask.Remove(),
             LaunchMode.Simulate => 2, // задача 16
             // Демон никогда не касается типов XAML — иначе в процесс загрузится Microsoft.UI.Xaml.dll.
@@ -22,8 +22,27 @@ public static class Program
         };
     }
 
+    private static int InstallAdminTask()
+    {
+        var exe = Environment.ProcessPath!;
+        new AutostartManager().Set(false, exe); // автозапуск переходит к Планировщику
+        return AdminTask.Install(exe);
+    }
+
     private static int RunSettings()
     {
+        using var mutex = new Mutex(initiallyOwned: true, @"Local\SaySo.Settings", out var createdNew);
+        if (!createdNew)
+        {
+            var existing = Core.Interop.Native.FindWindowExW(0, 0, null, "SaySo — настройки");
+            if (existing != 0)
+            {
+                Core.Interop.Native.SetForegroundWindow(existing);
+            }
+
+            return 0;
+        }
+
         WinRT.ComWrappersSupport.InitializeComWrappers();
         Application.Start(callbackParams =>
         {
