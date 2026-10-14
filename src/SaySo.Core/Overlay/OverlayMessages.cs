@@ -105,24 +105,29 @@ public static class OverlayMessages
     };
 
     /// <summary>Все возможные строки плашки (по одной на вариант) — для проверки ширины.</summary>
-    public static IEnumerable<string> All() => AllTexts().Select(t => t.Short);
+    public static IEnumerable<string> All() => AllTexts().Select(t => t.Short).Concat(UpdateTexts());
 
     /// <summary>Полные тексты для подсказки трея — для проверки, что они помещаются в её лимит.</summary>
     public static IEnumerable<string> AllDetails() => AllTexts().Select(t => t.Detail);
+
+    // Сообщения об обновлении — не ошибки диктовки и в подсказку значка не попадают, поэтому не входят в AllDetails().
+    private static IEnumerable<string> UpdateTexts()
+    {
+        yield return UpdateDownloading;
+        yield return UpdateCancelled;
+        yield return UpdateLaunchFailed;
+        yield return UpdateUpToDate;
+        yield return UpdateCheckFailed;
+        foreach (var failure in Enum.GetValues<DownloadFailure>())
+        {
+            yield return ForDownloadFailure(failure);
+        }
+    }
 
     private static IEnumerable<FailureText> AllTexts()
     {
         yield return FailureText.Same(StartFailed);
         yield return FailureText.Same(DictationError);
-        yield return FailureText.Same(UpdateDownloading);
-        yield return FailureText.Same(UpdateCancelled);
-        yield return FailureText.Same(UpdateLaunchFailed);
-        yield return FailureText.Same(UpdateUpToDate);
-        yield return FailureText.Same(UpdateCheckFailed);
-        foreach (var failure in Enum.GetValues<DownloadFailure>())
-        {
-            yield return FailureText.Same(ForDownloadFailure(failure));
-        }
 
         foreach (var kind in Enum.GetValues<MicrophoneErrorKind>())
         {
