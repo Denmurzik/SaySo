@@ -20,7 +20,7 @@
 - **Tiny in the background.** A NativeAOT daemon that never loads XAML: **6.9 MB** of private memory at idle (its working set is trimmed to under 1 MB). The WinUI 3 settings window is a separate process that fully exits when you close it.
 - **Never loses what you said.** Add several Gemini keys and SaySo switches to the next one the moment a key hits its quota — even mid-sentence, re-sending what was already recorded. No keys left or network down? The recording goes to **Groq Whisper** with LLM cleanup instead.
 - **Works everywhere.** Pastes into whatever app is focused; your clipboard text is restored and dictations are kept out of Win+V history.
-- **Private by default.** Audio never touches the disk. API keys and history are encrypted with Windows DPAPI. Data flow: audio and your vocabulary terms go to Google Gemini; if the fallback kicks in, audio, the transcript and your vocabulary terms go to Groq; checking API keys also calls these APIs.
+- **Private by default.** Audio never touches the disk. API keys and history are encrypted with Windows DPAPI. Data flow: audio and your vocabulary terms go to Google Gemini; if the fallback kicks in, audio, the transcript and your vocabulary terms go to Groq; checking API keys also calls these APIs. The update check calls the GitHub API (see [Updates](#updates); it can be turned off).
 - **Russian interface.** The app's interface is currently in Russian; the Russian labels of settings pages, buttons and menu items are given in parentheses throughout this README.
 
 ## How it works
@@ -78,16 +78,43 @@ The other pages are shown next to their descriptions: General («Общие») u
 
 Requirements: Windows 11 x64, a microphone, a Gemini API key (free tier) and optionally a Groq API key (free) for the fallback.
 
-Build from source (needs the .NET 10 SDK and Visual Studio Build Tools with the C++ workload for NativeAOT):
+### Installer (recommended)
+
+1. Download `SaySo-Setup-X.Y.Z.exe` from the [latest release](https://github.com/Denmurzik/SaySo/releases/latest) and run it.
+2. The installer is not code-signed, so on first launch Windows SmartScreen may show “Windows protected your PC”. Click *More info* («Подробнее») → *Run anyway* («Выполнить в любом случае»). To verify the download, compare `(Get-FileHash .\SaySo-Setup-X.Y.Z.exe).Hash` with the contents of `SaySo-Setup-X.Y.Z.exe.sha256` from the same release.
+3. Pick the install mode in the wizard:
+   - **Only for me** (default) — no administrator rights needed; SaySo goes to `%LOCALAPPDATA%\Programs\SaySo`.
+   - **For all users** — installs to `C:\Program Files\SaySo` and asks for administrator rights (UAC).
+4. Optionally add a desktop shortcut and tick *Launch SaySo*. The Start menu shortcut is always created. The wizard is in Russian or English, following the Windows language.
+
+Installing a newer `SaySo-Setup` over an older one updates in place: the running SaySo is closed, settings, keys and history are kept. For scripted installs: `SaySo-Setup-X.Y.Z.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /CURRENTUSER` (or `/ALLUSERS`); a silent install does not start SaySo.
+
+**Portable.** Every release also has `SaySo-X.Y.Z-win-x64.zip`: unpack it anywhere and run `SaySo.exe`. A copy that was not installed by the installer cannot update itself: the *Update* button opens the release page instead.
+
+**Uninstall:** *Settings → Apps → Installed apps → SaySo → Uninstall*. The uninstaller stops SaySo, removes the autostart entry and the Task Scheduler task if they point to this installation, and asks whether to delete settings, keys and history too (`%LOCALAPPDATA%\SaySo`; the default answer is *No*, and a silent uninstall keeps them). The Task Scheduler task of the admin mode can only be removed with administrator rights: if that fails, the uninstaller shows the `schtasks /Delete /TN SaySo /F` command.
+
+### Updates
+
+SaySo checks GitHub Releases for a newer version and installs it in one click.
+
+- **When it checks.** Automatically, and only if at least 24 hours have passed since the last check: one minute after SaySo starts, after you unlock the session and after the PC wakes from sleep. There are no timers while it idles. Turn it off with *General → Check for updates automatically* («Общие» → «Проверять обновления автоматически»). *About → Check for updates* («О программе» → «Проверить обновления») checks right away and shows the result, including errors.
+- **When a new version is found.** A tray notification (“Version X.Y.Z is available”), an *Update to X.Y.Z* («Обновить до X.Y.Z») item in the tray menu and an *Update* («Обновить») button on the About page. If you dismiss the notification, you are not notified about that version again, but the menu item and the button stay.
+- **One click.** SaySo waits until no dictation is in progress, downloads the installer into `%TEMP%\SaySo-Update`, checks its size and SHA-256 against the `.sha256` file of the same release (on a mismatch it deletes the file and starts nothing), runs it silently and restarts itself. For an all-users install Windows asks for administrator rights (UAC); if you decline, the update is cancelled and SaySo keeps running.
+- **What leaves your PC.** Only a request for the latest release to `api.github.com` (the `User-Agent` header carries the SaySo version, no token) and the download of the installer from GitHub. Keys, texts and audio are not sent.
+
+### Build from source
+
+For development: needs the .NET 10 SDK and Visual Studio Build Tools with the C++ workload for NativeAOT.
 
 ```powershell
 git clone https://github.com/Denmurzik/SaySo
 cd SaySo
-powershell -ExecutionPolicy Bypass -File .\build.ps1     # NativeAOT publish to artifacts/publish; needs >= 4 GB of free RAM
-powershell -ExecutionPolicy Bypass -File .\install.ps1   # copies to %LOCALAPPDATA%\Programs\SaySo, adds a Start menu shortcut, starts SaySo
+powershell -ExecutionPolicy Bypass -File .\build.ps1             # NativeAOT publish to artifacts/publish; needs >= 4 GB of free RAM
+powershell -ExecutionPolicy Bypass -File .\install.ps1           # copies to %LOCALAPPDATA%\Programs\SaySo, adds a Start menu shortcut, starts SaySo
+powershell -ExecutionPolicy Bypass -File .\build-installer.ps1   # builds artifacts/installer/SaySo-Setup-X.Y.Z.exe (+ .sha256) and the portable ZIP
 ```
 
-Uninstall: `powershell -ExecutionPolicy Bypass -File .\uninstall.ps1` (add `-RemoveData` to also delete settings, keys and history). Both install scripts accept `-Target <folder>` and `-WhatIf`.
+Uninstall a copy made by `install.ps1`: `powershell -ExecutionPolicy Bypass -File .\uninstall.ps1` (add `-RemoveData` to also delete settings, keys and history). Both scripts accept `-Target <folder>` and `-WhatIf`. `build-installer.ps1` uses an installed Inno Setup 6.3+ if it finds one; otherwise it downloads the portable compiler (the `Tools.InnoSetup` NuGet package) into `artifacts/tools` and installs nothing system-wide. Releases are built by GitHub Actions when a `vX.Y.Z` tag is pushed (the tag must match `<Version>` in `Directory.Build.props`).
 
 ## API keys
 
