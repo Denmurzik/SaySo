@@ -85,7 +85,7 @@ Requirements: Windows 11 x64, a microphone, a Gemini API key (free tier) and opt
 3. Pick the install mode in the wizard:
    - **Only for me** (default) — no administrator rights needed; SaySo goes to `%LOCALAPPDATA%\Programs\SaySo`.
    - **For all users** — installs to `C:\Program Files\SaySo` and asks for administrator rights (UAC).
-4. Optionally add a desktop shortcut and tick *Launch SaySo*. The Start menu shortcut is always created. The wizard is in Russian or English, following the Windows language.
+4. Optionally add a desktop shortcut and tick *Launch SaySo*. The Start menu shortcut is always created. The wizard is in Russian, and in English when the Windows display language is English.
 
 Installing a newer `SaySo-Setup` over an older one updates in place: the running SaySo is closed, settings, keys and history are kept. For scripted installs: `SaySo-Setup-X.Y.Z.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /CURRENTUSER` (or `/ALLUSERS`); a silent install does not start SaySo.
 
