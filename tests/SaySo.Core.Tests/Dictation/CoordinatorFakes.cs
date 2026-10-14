@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using SaySo.Core.Audio;
 using SaySo.Core.Audio.Wasapi;
 using SaySo.Core.Dictation;
 using SaySo.Core.Input;

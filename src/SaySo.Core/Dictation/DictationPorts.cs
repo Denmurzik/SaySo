@@ -1,3 +1,4 @@
+using SaySo.Core.Audio;
 using SaySo.Core.Audio.Wasapi;
 using SaySo.Core.Input;
 using SaySo.Core.Overlay;

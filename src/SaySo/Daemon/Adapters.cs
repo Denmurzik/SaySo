@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using SaySo.Core.Audio;
 using SaySo.Core.Audio.Wasapi;
 using SaySo.Core.Diagnostics;
 using SaySo.Core.Dictation;
@@ -66,9 +67,9 @@ internal sealed class InserterOutput(TextInserter inserter, Action onInsert) : I
     }
 }
 
-internal sealed class DaemonFeedback(Action<TrayState, string?> setTray) : IDictationFeedback
+internal sealed class DaemonFeedback(Action<TrayState, string?> setTray, Func<string> soundTheme) : IDictationFeedback
 {
-    public void Play(SoundKind kind) => SoundPlayer.Play(kind);
+    public void Play(SoundKind kind) => SoundPlayer.Play(kind, soundTheme());
 
     public void SetTray(TrayState state, string? detail = null) => setTray(state, detail);
 }

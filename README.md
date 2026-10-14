@@ -103,7 +103,7 @@ SaySo checks GitHub Releases for a newer version and can install it in one click
 - **One click.** Click the notification, the menu item or the button: SaySo downloads `SaySo-Setup-X.Y.Z.exe` into `%TEMP%\SaySo-Update`, checks its size and SHA-256 against the `.sha256` file of the same release (on a mismatch it deletes the file and starts nothing), starts the installer silently and waits for it. The installer closes SaySo itself, installs over the old version and starts SaySo again as the original user. The mode is the one you installed in, read from the installer's uninstall entry: *only for me* updates without any prompt; for *for all users* the installer itself asks Windows for administrator rights (UAC) — if you decline, SaySo shows «Обновление отменено» and keeps running. A failed update rolls back, and the previous SaySo is started again.
 - **When SaySo cannot install by itself.** If SaySo runs as administrator (admin mode), if the copy was not installed by the installer (the ZIP, `install.ps1`) or if the release has no installer files, nothing is downloaded or started: the notification reads «Доступна версия X.Y.Z. Скачайте установщик со страницы релиза», the menu item becomes «Страница релиза X.Y.Z», the About button «Открыть страницу релиза», and they open the release page — install the new version by hand.
 - **What leaves your PC.** One request `GET https://api.github.com/repos/Denmurzik/SaySo/releases/latest` (headers `User-Agent: SaySo/<version>` and `Accept: application/vnd.github+json`, no token, 15 s timeout) and the download of the installer and its `.sha256` from `github.com/Denmurzik/SaySo/releases/…`. As with any web request, GitHub sees your IP address. Keys, texts and audio are not sent.
-- **Diagnostics.** `SaySo.exe --check-updates --out result.txt` makes one check without the daemon, windows or tray and writes one line to the file: `current=0.1.1 outcome=UpToDate`, `outcome=Available latest=X.Y.Z installable=True|False …` or `outcome=Failed failure=Network|Timeout|RateLimited|BadResponse`. Exit code: 0 — the check was made, 2 — it failed, 3 — unexpected error. `--out` is needed because `SaySo.exe` has no console window. The command does not change `update-state.json` or `settings.json`.
+- **Diagnostics.** `SaySo.exe --check-updates --out result.txt` makes one check without the daemon, windows or tray and writes one line to the file: `current=0.1.2 outcome=UpToDate`, `outcome=Available latest=X.Y.Z installable=True|False …` or `outcome=Failed failure=Network|Timeout|RateLimited|BadResponse`. Exit code: 0 — the check was made, 2 — it failed, 3 — unexpected error. `--out` is needed because `SaySo.exe` has no console window. The command does not change `update-state.json` or `settings.json`.
 
 ### Build from source
 
@@ -119,6 +119,8 @@ powershell -ExecutionPolicy Bypass -File .\build-installer.ps1   # builds artifa
 
 Uninstall a copy made by `install.ps1`: `powershell -ExecutionPolicy Bypass -File .\uninstall.ps1` (add `-RemoveData` to also delete settings, keys and history). Both scripts accept `-Target <folder>` and `-WhatIf`. `build-installer.ps1` uses an installed Inno Setup 6.3+ if it finds one; otherwise it downloads the portable compiler (the `Tools.InnoSetup` NuGet package) into `artifacts/tools` and installs nothing system-wide. Releases are built by GitHub Actions when a `vX.Y.Z` tag is pushed (the tag must match `<Version>` in `Directory.Build.props`).
 
+For development and screenshots, the environment variable `SAYSO_DATA_DIR` (an absolute path; a relative one is ignored) makes SaySo keep its settings, keys, history and log in that folder instead of `%LOCALAPPDATA%\SaySo`, so the real data stays untouched.
+
 ## API keys
 
 - **Gemini** — create a key in [Google AI Studio](https://aistudio.google.com/apikey). Your own free-tier limits are shown in AI Studio (Google does not publish fixed numbers for this preview model). On the free tier Google may use requests to improve its products. The Gemini API is not available in some regions (including Russia) — a system-wide VPN is required there.
@@ -133,6 +135,10 @@ Windows must allow desktop apps to use the microphone: *Settings → Privacy & s
 ## Settings
 
 Open them from the tray icon (double-click, or right-click → *Settings…* («Настройки…»)). The window is titled “SaySo” and has a side menu that is always open: General («Общие»), Recognition («Распознавание»), Dictionary («Словарь»), Microphone («Микрофон»), History («История»), About («О программе»). The window is a separate process: closing it ends it.
+
+### Sounds
+
+SaySo plays a short signal when recording starts, when it ends and when something goes wrong. *General → Sounds* («Общие» → «Звуки») offers eight themes: Glass («Стекло»), Drop («Капля»), Wood («Дерево»), Bell («Колокольчик»), Felt («Войлок», the default), Pillow («Подушка»), Tap («Тап») and Kalimba («Калимба»). The *Preview* («Прослушать») button plays the start signal of the chosen theme. The choice is saved at once and applies to the running SaySo without a restart; the *Sound signals* («Звуковые сигналы») switch turns every signal off. The sounds are built into `SaySo.exe` (about 2 MB) and generated by `tools/sounds/generate_sounds.py`. They are played straight from the executable's memory, so no extra private memory is held.
 
 ### Microphone
 
@@ -157,7 +163,7 @@ Measured on Windows 11 (x64), NativeAOT Release build:
 | Settings window (open, 6 s after launch) | 93.4 MB | 147.5 MB |
 | Settings window (closed) | process exits | process exits |
 
-Publish size: 66.6 MB (`SaySo.exe` is 9.6 MB).
+Publish size: 68.9 MB (`SaySo.exe` is 11.9 MB, of which about 2 MB are the built-in sounds).
 
 The daemon trims its working set after start and after each session, so its working set stays below 1 MB and *Private bytes* is the more telling column; the settings window is not trimmed. The dictation row was measured without a completed recognition: a real dictation adds network buffers (WebSocket/TLS/HTTP), so expect somewhat more.
 

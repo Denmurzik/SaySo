@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Security;
+using SaySo.Core.Audio;
 using SaySo.Core.Diagnostics;
 using SaySo.Core.Dictation;
 using SaySo.Core.Engines.Gemini;
@@ -80,7 +81,7 @@ internal sealed class DaemonHost : IDisposable
             (onData, onError) => new WasapiAudioSource(_settings.MicrophoneDeviceId, _settings.MicrophoneDeviceName, onData, onError),
             _overlay,
             new InserterOutput(_inserter, () => _dictationTarget = _pressTarget),
-            new DaemonFeedback(OnDictationTray),
+            new DaemonFeedback(OnDictationTray, () => _settings.SoundTheme),
             new WindowScheduler(_window, OnSchedulingFailed),
             _history,
             () => _settings,
@@ -648,7 +649,7 @@ internal sealed class DaemonHost : IDisposable
             UpdateTray(TrayState.Error, OverlayMessages.StartFailed);
             if (_settings.SoundsEnabled)
             {
-                SoundPlayer.Play(SoundKind.Error);
+                SoundPlayer.Play(SoundKind.Error, _settings.SoundTheme);
             }
 
             await cancel;

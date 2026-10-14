@@ -8,9 +8,22 @@ public sealed class AppPaths
         Root = root;
     }
 
-    /// <summary>%LOCALAPPDATA%\SaySo</summary>
-    public static AppPaths Default { get; } = new(Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "SaySo"));
+    /// <summary>Только для разработки: абсолютный путь в этой переменной окружения заменяет %LOCALAPPDATA%\SaySo.</summary>
+    public const string DataDirVariable = "SAYSO_DATA_DIR";
+
+    /// <summary>%LOCALAPPDATA%\SaySo, а при заданной SAYSO_DATA_DIR (абсолютный путь) этот каталог.</summary>
+    public static AppPaths Default { get; } = Resolve(
+        Environment.GetEnvironmentVariable(DataDirVariable),
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData));
+
+    /// <summary>Пустое значение и относительный путь игнорируются: данные не должны оказаться в случайном рабочем каталоге.</summary>
+    public static AppPaths Resolve(string? dataDirOverride, string localAppData)
+    {
+        var custom = dataDirOverride?.Trim();
+        return !string.IsNullOrEmpty(custom) && Path.IsPathFullyQualified(custom)
+            ? new AppPaths(custom)
+            : new AppPaths(Path.Combine(localAppData, "SaySo"));
+    }
 
     public string Root { get; }
 

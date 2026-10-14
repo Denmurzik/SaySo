@@ -45,11 +45,26 @@
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
                     <StackPanel VerticalAlignment="Center">
                         <TextBlock Text="Звуковые сигналы" Style="{StaticResource CardTitle}" />
                         <TextBlock Style="{StaticResource CardDescription}" Text="Короткие сигналы начала и конца записи и ошибки." />
                     </StackPanel>
                     <ToggleSwitch x:Name="SoundsSwitch" Grid.Column="1" OnContent="Вкл" OffContent="Выкл" Toggled="OnSoundsToggled" />
+                    <Grid Grid.Row="1" Grid.ColumnSpan="2" Margin="0,12,0,0" ColumnSpacing="16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="Звуки" VerticalAlignment="Center" />
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                            <ComboBox x:Name="SoundThemeBox" MinWidth="180" AutomationProperties.Name="Звуки" SelectionChanged="OnSoundThemeChanged" />
+                            <Button x:Name="SoundPreviewButton" Content="Прослушать" Click="OnSoundPreviewClick" />
+                        </StackPanel>
+                    </Grid>
                 </Grid>
             </Border>
 
