@@ -157,4 +157,4 @@ dotnet run --project tools/SaySo.Probe -- gemini --wav <файл.wav> --realtime
 
 ## Лицензия
 
-[Apache-2.0](LICENSE)
+SaySo — свободное программное обеспечение: вы можете распространять и/или изменять его на условиях GNU General Public License версии 3 или (на ваш выбор) любой более поздней версии ([GPL-3.0-or-later](LICENSE)). Гарантий нет. Версия 0.1.0 выпущена под лицензией Apache-2.0.

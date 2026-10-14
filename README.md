@@ -9,7 +9,7 @@
   <img src="https://img.shields.io/badge/Windows-11-0078D4?logo=windows11&logoColor=white" alt="Windows 11">
   <img src="https://img.shields.io/badge/.NET_10-NativeAOT-512BD4?logo=dotnet&logoColor=white" alt=".NET 10 NativeAOT">
   <img src="https://img.shields.io/badge/WinUI-3-0063B1" alt="WinUI 3">
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-green" alt="Apache-2.0"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0--or--later-green" alt="GPL-3.0-or-later"></a>
 </p>
 <p align="center"><a href="README.ru.md">🇷🇺 Читать на русском</a></p>
 <p align="center"><img src="docs/assets/overlay-demo.png" alt="SaySo overlay: recording, then processing"></p>
@@ -174,4 +174,4 @@ Command mode (edit selected text by voice), per-app styles, snippets, local mode
 
 ## License
 
-[Apache-2.0](LICENSE)
+SaySo is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License v3 or (at your option) any later version ([GPL-3.0-or-later](LICENSE)). It comes with no warranty. Version 0.1.0 was released under Apache-2.0.
