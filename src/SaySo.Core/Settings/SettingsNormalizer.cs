@@ -36,7 +36,8 @@ public static class SettingsNormalizer
             s.MicrophoneDeviceId = null;
         }
 
-        s.MicrophoneDeviceName = string.IsNullOrWhiteSpace(s.MicrophoneDeviceName)
+        // Имя без идентификатора бессмысленно: «по умолчанию» очищает оба значения.
+        s.MicrophoneDeviceName = s.MicrophoneDeviceId is null || string.IsNullOrWhiteSpace(s.MicrophoneDeviceName)
             ? null
             : Truncate(s.MicrophoneDeviceName.Trim(), MaxDeviceNameLength);
 

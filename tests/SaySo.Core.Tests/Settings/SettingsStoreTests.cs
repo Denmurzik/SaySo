@@ -187,13 +187,16 @@ public class SettingsStoreTests
         Assert.Null(SettingsNormalizer.Normalize(s).MicrophoneDeviceName);
     }
 
-    [Fact]
-    public void Normalize_MicrophoneDeviceNameAndId_AreIndependent()
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void Normalize_MicrophoneDeviceNameWithoutId_IsCleared(string? id)
     {
-        // Очистка идентификатора («как в Windows») — дело страницы настроек, а не нормализатора: ручная правка JSON не теряет имя.
-        var s = new AppSettings { MicrophoneDeviceId = " ", MicrophoneDeviceName = "Гарнитура" };
+        // Имя без идентификатора бессмысленно: «по умолчанию» очищает оба значения.
+        var s = new AppSettings { MicrophoneDeviceId = id, MicrophoneDeviceName = "Гарнитура" };
         var n = SettingsNormalizer.Normalize(s);
         Assert.Null(n.MicrophoneDeviceId);
-        Assert.Equal("Гарнитура", n.MicrophoneDeviceName);
+        Assert.Null(n.MicrophoneDeviceName);
     }
 }
