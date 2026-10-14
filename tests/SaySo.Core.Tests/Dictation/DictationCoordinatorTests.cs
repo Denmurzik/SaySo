@@ -624,6 +624,78 @@ public sealed class DictationCoordinatorTests : IDisposable
         await WaitUntilAsync(() => c.State == DictationState.Idle);
 
         Assert.Equal(["текст"], _output.Texts);
+        Assert.DoesNotContain(SoundKind.Error, _feedback.Sounds); // текст получен: сбой микрофона не показывается, как и раньше
+        Assert.DoesNotContain(TrayState.Error, _feedback.Tray);
+    }
+
+    private static MicrophoneException DeviceLost() => MicrophoneException.FromHResult(unchecked((int)0x88890004), "GetBuffer");
+
+    [Fact]
+    public async Task MicrophoneLostDuringRecording_NothingRecorded_ShowsMicrophoneError_NotNoSpeech()
+    {
+        var c = Create();
+        var ended = 0;
+        c.SessionEnded += () => ended++;
+        await c.HandleAsync(HotkeyAction.StartRecording);
+        _scheduler.Fire(DictationCoordinator.EngineStartDelay);
+        _sources[0].Fail(DeviceLost());
+        await WaitUntilAsync(() => c.State == DictationState.Idle);
+
+        const string Expected = "Микрофон отключился во время записи";
+        Assert.Equal($"message:Error:{Expected}", _overlay.Calls[^1]);
+        Assert.DoesNotContain(NoSpeechCall, _overlay.Calls);
+        Assert.Equal(TrayState.Error, _feedback.Tray[^1]);
+        Assert.Equal(Expected, _feedback.TrayDetails[^1]);
+        Assert.Equal([SoundKind.Start, SoundKind.Error], _feedback.Sounds);
+        Assert.Empty(_output.Texts);
+        Assert.Empty(_history.Load());
+        Assert.Equal(1, _resets);
+        Assert.Equal(1, ended);
+    }
+
+    [Fact]
+    public async Task MicrophoneLostDuringRecording_OnlySilenceRecorded_ShowsMicrophoneError()
+    {
+        var c = Create();
+        await c.HandleAsync(HotkeyAction.StartRecording);
+        _scheduler.Fire(DictationCoordinator.EngineStartDelay);
+        _sources[0].Push(new byte[32000]);
+        _sources[0].Fail(DeviceLost());
+        await WaitUntilAsync(() => c.State == DictationState.Idle);
+
+        Assert.Equal("message:Error:Микрофон отключился во время записи", _overlay.Calls[^1]);
+        Assert.Contains(SoundKind.Error, _feedback.Sounds);
+    }
+
+    [Fact]
+    public async Task MicrophoneFailureOfPreviousSession_DoesNotTurnNextSilenceIntoAnError()
+    {
+        var c = Create();
+        await c.HandleAsync(HotkeyAction.StartRecording);
+        _scheduler.Fire(DictationCoordinator.EngineStartDelay);
+        _sources[0].Fail(DeviceLost());
+        await WaitUntilAsync(() => c.State == DictationState.Idle);
+
+        await c.HandleAsync(HotkeyAction.StartRecording);
+        _sources[1].Push(new byte[32000]);
+        await c.HandleAsync(HotkeyAction.StopRecording);
+
+        Assert.Equal(NoSpeechCall, _overlay.Calls[^1]);
+    }
+
+    [Fact]
+    public async Task AutoStop_WithNoSpeech_ShowsInfoWithoutWarningSound()
+    {
+        var c = Create();
+        await c.HandleAsync(HotkeyAction.StartRecording);
+        _scheduler.Fire(DictationCoordinator.EngineStartDelay);
+        _sources[0].Push(new byte[32000]);
+        _scheduler.Fire(DictationCoordinator.AutoStopAfter);
+        await WaitUntilAsync(() => c.State == DictationState.Idle);
+
+        Assert.Equal(NoSpeechCall, _overlay.Calls[^1]);
+        Assert.Empty(_output.Texts);
+        Assert.Equal([SoundKind.Start], _feedback.Sounds); // предупреждение о лимите только вместе с текстом
     }
 
     [Fact]

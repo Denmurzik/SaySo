@@ -41,6 +41,7 @@ public sealed class DictationCoordinator(
     private long _pressedAt;
     private PendingError? _pending;
     private bool _cancelledWhileStarting; // Cancel пришёл, пока микрофон ещё запускался: это было сочетание клавиш
+    private MicrophoneException? _micFailure; // микрофон отказал посреди записи: пустой результат тогда не «нет речи», а сбой
 
     public event Action? SessionEnded;
 
@@ -73,6 +74,7 @@ public sealed class DictationCoordinator(
         DiscardPending(endSession: false); // отложенная ошибка прошлой попытки: новое нажатие её отменяет
         _pressedAt = time.GetTimestamp();
         _cancelledWhileStarting = false;
+        _micFailure = null;
         State = DictationState.Recording;
         _starting = StartCoreAsync();
         return _starting;
@@ -199,19 +201,29 @@ public sealed class DictationCoordinator(
                 run.StartPrimary();
             }
 
-            if (auto)
-            {
-                PlaySound(SoundKind.Error); // предупреждение: достигнут лимит длины реплики
-            }
-
             overlay.ShowProcessing();
             feedback.SetTray(TrayState.Idle);
             var result = await run.FinishAsync(CancellationToken.None);
             if (result.IsEmpty)
             {
-                // Тишина, слишком короткая реплика или пустой ответ движка: не сбой, поэтому тон Info, без звука; история и буфер не трогаются.
-                overlay.ShowMessage(OverlayMessages.NoSpeech, OverlayTone.Info);
+                if (_micFailure is { } micFailure)
+                {
+                    // Микрофон отключился, а сказанного не осталось: это сбой, а не тишина. Тот же показ, что при отказе на старте.
+                    failed = Fail(new FailureText(micFailure.UserMessage, micFailure.Detail));
+                }
+                else
+                {
+                    // Тишина, слишком короткая реплика или пустой ответ движка: не сбой, поэтому тон Info, без звука;
+                    // история и буфер не трогаются. Звука предупреждения о лимите (auto) тоже нет: сообщение само всё объясняет.
+                    overlay.ShowMessage(OverlayMessages.NoSpeech, OverlayTone.Info);
+                }
+
                 return;
+            }
+
+            if (auto)
+            {
+                PlaySound(SoundKind.Error); // предупреждение: достигнут лимит длины реплики; звучит, только если текст получен
             }
 
             try
@@ -258,6 +270,7 @@ public sealed class DictationCoordinator(
         finally
         {
             _run = null;
+            _micFailure = null;
             State = DictationState.Idle;
             if (!failed)
             {
@@ -290,6 +303,8 @@ public sealed class DictationCoordinator(
             return;
         }
 
+        _micFailure = null; // отмена: что бы ни случилось с микрофоном, показывать нечего
+
         // Сначала освобождаем главный поток для нового нажатия, закрытие сессии движка — после.
         StopCapture();
         _run = null;
@@ -309,6 +324,7 @@ public sealed class DictationCoordinator(
         }
 
         Log.Info($"Микрофон во время записи: {e.Kind}");
+        _micFailure = e; // StopAsync покажет эту ошибку, если от записи не осталось текста
         _ = StopAsync(run, auto: false);
     }
 

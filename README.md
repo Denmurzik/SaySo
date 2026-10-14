@@ -47,7 +47,7 @@ The hotkey, language, model, vocabulary and microphone are configurable.
 
 ### Overlay and tray
 
-The overlay is drawn by the same renderer the app uses (the animation at the top shows recording, then processing). Error and info messages are one short line; the full text of an error is in the tray icon's tooltip. The overlay always stays on top of other windows (including other "always on top" ones) without taking focus; the Start menu and system flyouts stay above it, which a normal app cannot change. If a recording contains no speech (silence, too short, or an empty result), the overlay shows the info message «Речь не распознана» ("Speech not recognized"), with no error sound, and nothing is pasted or saved to history.
+The overlay is drawn by the same renderer the app uses (the animation at the top shows recording, then processing). Error and info messages are one short line; the full text of an error is in the tray icon's tooltip. The overlay always stays on top of other windows (including other "always on top" ones) without taking focus; the Start menu and system flyouts stay above it, which a normal app cannot change. If a recording contains no speech (silence, too short, or an empty result), the overlay shows the info message «Речь не распознана» ("Speech not recognized"), with no error sound, and nothing is pasted or saved to history. If the microphone drops out mid-recording and nothing was captured, the microphone error is shown instead.
 
 | State | Overlay |
 |---|---|
