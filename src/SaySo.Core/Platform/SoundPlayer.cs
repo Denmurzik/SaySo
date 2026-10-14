@@ -18,7 +18,13 @@ public static unsafe class SoundPlayer
         try
         {
             var theme = SoundThemes.Normalize(themeId);
-            Native.PlaySoundW((void*)Loader.Get(theme, kind), 0, Native.SND_ASYNC | Native.SND_MEMORY | Native.SND_NODEFAULT);
+            if (!Native.PlaySoundW((void*)Loader.Get(theme, kind), 0, Native.SND_ASYNC | Native.SND_MEMORY | Native.SND_NODEFAULT))
+            {
+                Log.Info($"Звук не воспроизведён: тема {theme}, {kind}"); // нет устройства вывода или система отказала; не исключение
+                return;
+            }
+
+            // Строка о теме пишется только после успешного воспроизведения: по журналу видно, что звук действительно пошёл.
             if (!string.Equals(Interlocked.Exchange(ref _loggedTheme, theme), theme, StringComparison.Ordinal))
             {
                 Log.Info($"Звуковая тема: {theme}");

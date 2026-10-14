@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using System.Runtime.InteropServices;
 using SaySo.Core.Audio;
 
 namespace SaySo.Core.Tests.Audio;
@@ -64,6 +65,18 @@ public class SoundThemeLoaderTests
     }
 
     [Fact]
+    public void Get_StreamOverSafeBuffer_ThrowsInvalidOperationWithTheOriginalCause()
+    {
+        // У потока поверх SafeBuffer нет PositionPointer: UnmanagedMemoryStream бросает NotSupportedException.
+        using var buffer = new HGlobalBuffer(8);
+        var loader = new SoundThemeLoader(_ => new UnmanagedMemoryStream(buffer, 0, 8));
+
+        var error = Assert.Throws<InvalidOperationException>(() => loader.Get("1-steklo", SoundKind.Start));
+
+        Assert.IsType<NotSupportedException>(error.InnerException);
+    }
+
+    [Fact]
     public unsafe void Get_StreamNotAtStart_Throws()
     {
         var data = GC.AllocateArray<byte>(8, pinned: true);
@@ -100,6 +113,22 @@ public class SoundThemeLoaderTests
                 Assert.Equal(expected.Length, BinaryPrimitives.ReadInt32LittleEndian(new ReadOnlySpan<byte>(pointer + 4, 4)) + 8);
                 Assert.True(new ReadOnlySpan<byte>(pointer, expected.Length).SequenceEqual(expected), $"{name}: байты по указателю отличаются от ресурса");
             }
+        }
+    }
+
+    private sealed class HGlobalBuffer : SafeBuffer
+    {
+        public HGlobalBuffer(int size)
+            : base(ownsHandle: true)
+        {
+            SetHandle(Marshal.AllocHGlobal(size));
+            Initialize((ulong)size);
+        }
+
+        protected override bool ReleaseHandle()
+        {
+            Marshal.FreeHGlobal(handle);
+            return true;
         }
     }
 
