@@ -263,9 +263,8 @@ public sealed unsafe class WasapiCapture : IDisposable
                 return device;
             }
 
-            Log.Info(string.IsNullOrWhiteSpace(deviceName)
-                ? "Выбранный микрофон недоступен — используется микрофон по умолчанию"
-                : $"Выбранный микрофон недоступен — используется микрофон по умолчанию (сохранён: «{deviceName.Trim()}»)");
+            // Имя устройства в журнал не пишем: гарнитуры часто названы по владельцу, а журнал прикладывают к обращениям.
+            Log.Info("Выбранный микрофон недоступен — используется микрофон по умолчанию");
         }
 
         WasapiDevices.Check(enumerator->GetDefaultAudioEndpointHr(EDataFlow.eCapture, ERole.eConsole, &device), "GetDefaultAudioEndpoint");
@@ -308,7 +307,7 @@ public sealed unsafe class WasapiCapture : IDisposable
             var found = OpenActiveById(enumerator, endpoint.Id);
             if (found != null && resolution.Match == MicrophoneMatch.ByName)
             {
-                Log.Info($"Микрофон «{endpoint.Name}» найден по имени (идентификатор изменился)");
+                Log.Info("Выбранный микрофон найден по имени (идентификатор изменился)");
             }
 
             return found;
