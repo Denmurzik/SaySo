@@ -7,7 +7,7 @@ public static class ErrorMessages
     {
         EngineErrorKind.QuotaExceeded => $"{engine}: лимит запросов исчерпан",
         EngineErrorKind.AuthFailed => $"{engine}: ключ API недействителен",
-        EngineErrorKind.RegionBlocked => $"{engine}: недоступен в вашем регионе — проверьте VPN",
+        EngineErrorKind.RegionBlocked => $"{engine}: недоступен в вашем регионе, проверьте VPN",
         EngineErrorKind.ModelNotFound => $"{engine}: модель не найдена",
         EngineErrorKind.Network => $"{engine}: нет связи с сервером",
         EngineErrorKind.Timeout => $"{engine}: сервер не ответил вовремя",
@@ -18,7 +18,7 @@ public static class ErrorMessages
     };
 
     /// <summary>
-    /// То же короче: вместе с приставкой «Резерв Groq — » или припиской «; резерв не настроен» текст должен поместиться на
+    /// То же короче: вместе с приставкой «Резерв Groq (…)» или припиской «; резерв не настроен» текст должен поместиться на
     /// плашку оверлея (<see cref="Overlay.OverlayMessages.MaxTextWidthPx"/>). Полный вариант — <see cref="Describe"/>.
     /// </summary>
     public static string DescribeShort(EngineErrorKind kind, string engine) => kind switch

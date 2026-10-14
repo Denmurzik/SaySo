@@ -162,7 +162,7 @@ public sealed class UpdateCoordinatorTests : IDisposable
         _host.FireTimer();
         await Settle(() => _host.Balloons.Count > 0);
 
-        Assert.Equal("Доступна версия 0.2.0 — нажмите, чтобы обновить", Assert.Single(_host.Balloons));
+        Assert.Equal("Доступна версия 0.2.0. Нажмите, чтобы обновить", Assert.Single(_host.Balloons));
         Assert.Equal(new Version(0, 2, 0), Coordinator.Pending!.Version);
         Assert.Equal(new Version(0, 2, 0), _host.PendingChanges[^1]!.Version);
         Assert.True(_host.Timers[0].Disposed); // одноразовый таймер снят после срабатывания
@@ -578,7 +578,7 @@ public sealed class UpdateCoordinatorTests : IDisposable
         StartAndFire();
         await Settle(() => _host.Balloons.Count == 1);
 
-        Assert.Equal("Доступна версия 0.2.0 — скачайте установщик со страницы релиза", _host.Balloons[0]);
+        Assert.Equal("Доступна версия 0.2.0. Скачайте установщик со страницы релиза", _host.Balloons[0]);
     }
 
     [Fact]

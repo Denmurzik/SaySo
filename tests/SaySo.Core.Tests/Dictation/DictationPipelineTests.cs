@@ -245,7 +245,7 @@ public class DictationPipelineTests
         run.StartPrimary();
         run.PushAudio(Speech(1000));
         var ex = await Assert.ThrowsAsync<DictationFailedException>(() => run.FinishAsync(TestContext.Current.CancellationToken));
-        Assert.Equal("Gemini и Groq недоступны — подробности в трее", ex.UserMessage);
+        Assert.Equal("Gemini и Groq недоступны, подробности в трее", ex.UserMessage);
         Assert.Equal("Gemini: нет связи с сервером; Groq: ключ API недействителен", ex.Detail); // полный текст — для подсказки трея
         Assert.Equal(EngineErrorKind.AuthFailed, ex.FallbackError);
     }

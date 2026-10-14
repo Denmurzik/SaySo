@@ -98,7 +98,7 @@ public sealed partial class HistoryPage : UserControl
         catch (Exception ex)
         {
             Log.Error("HistoryPage.Clear", ex);
-            Info.Message = "Не удалось очистить историю — файл занят, попробуйте ещё раз.";
+            Info.Message = "Не удалось очистить историю: файл занят, попробуйте ещё раз.";
             Info.IsOpen = true;
         }
     }

@@ -825,10 +825,10 @@ internal sealed class DaemonHost : IDisposable
 
         var tooltip = state switch
         {
-            TrayState.Paused => "SaySo — приостановлено",
-            TrayState.Recording => "SaySo — запись…",
+            TrayState.Paused => TrayTooltip.Paused,
+            TrayState.Recording => TrayTooltip.Recording,
             TrayState.Error => TrayTooltip.ForError(_lastErrorDetail),
-            _ => $"SaySo — удерживайте {HotkeyFormatter.Format(_settings.Hotkey.Keys)}",
+            _ => TrayTooltip.Idle(HotkeyFormatter.Format(_settings.Hotkey.Keys)),
         };
         _tray.Set(_icons.Get(state), tooltip);
     }

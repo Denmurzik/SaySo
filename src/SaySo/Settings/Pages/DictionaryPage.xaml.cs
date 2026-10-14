@@ -70,7 +70,7 @@ public sealed partial class DictionaryPage : UserControl
     {
         var count = Parse(TermsBox.Text).Count;
         Counter.Text = count > SettingsNormalizer.MaxVocabularyTerms
-            ? $"{count} — будет сохранено только {SettingsNormalizer.MaxVocabularyTerms}"
+            ? $"{count} (будет сохранено только {SettingsNormalizer.MaxVocabularyTerms})"
             : count > 100 ? $"{count} (рекомендуется до 100)" : $"{count}";
     }
 }

@@ -50,7 +50,7 @@ public sealed partial class GeneralPage : UserControl
         }
 
         HotkeyButton.IsEnabled = false;
-        HotkeyButton.Content = "Нажмите сочетание… (Esc — отмена)";
+        HotkeyButton.Content = "Нажмите сочетание… (Esc: отмена)";
         IpcClient.Send(IpcProtocol.SuspendHotkey);
         try
         {
@@ -75,7 +75,7 @@ public sealed partial class GeneralPage : UserControl
         catch (Exception ex)
         {
             Log.Error("Запись горячей клавиши", ex);
-            Show("Не удалось записать сочетание — подробности в журнале", InfoBarSeverity.Error);
+            Show("Не удалось записать сочетание, подробности в журнале", InfoBarSeverity.Error);
         }
         finally
         {
@@ -224,7 +224,7 @@ public sealed partial class GeneralPage : UserControl
         catch (Exception ex)
         {
             Log.Error("Переключение режима администратора", ex);
-            Show("Не удалось переключить режим — подробности в журнале", InfoBarSeverity.Error);
+            Show("Не удалось переключить режим, подробности в журнале", InfoBarSeverity.Error);
         }
         finally
         {

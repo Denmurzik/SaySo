@@ -77,8 +77,8 @@ Filename: "{app}\{#AppExe}"; WorkingDir: "{app}"; Description: "{cm:LaunchProgra
 Filename: "{app}\{#AppExe}"; WorkingDir: "{app}"; Flags: nowait postinstall skipifnotsilent runasoriginaluser; Check: IsUpdateMode
 
 [CustomMessages]
-russian.ShortcutComment=SaySo — голосовая диктовка
-english.ShortcutComment=SaySo — voice dictation
+russian.ShortcutComment=SaySo: голосовая диктовка
+english.ShortcutComment=SaySo: voice dictation
 russian.StopFailed=Не удалось закрыть работающий SaySo (возможно, он запущен с правами администратора). Закройте его (значок в трее → «Выход») и повторите установку.
 english.StopFailed=Could not close the running SaySo (it may be running as administrator). Close it (tray icon → Exit) and run the setup again.
 russian.StopTitle=Закрытие SaySo
