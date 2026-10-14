@@ -15,6 +15,9 @@ public static class IpcProtocol
     public const string OpenSettings = "SaySo.OpenSettings";
     public const string Quit = "SaySo.Quit";
 
+    /// <summary>Сколько демон ждёт завершения диктовки при выходе (потом выходит принудительно).</summary>
+    public static readonly TimeSpan QuitGrace = TimeSpan.FromSeconds(10);
+
     public static readonly string[] AllMessages = [ReloadSettings, SuspendHotkey, ResumeHotkey, OpenSettings, Quit];
 }
 

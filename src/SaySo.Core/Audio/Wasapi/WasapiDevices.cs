@@ -12,6 +12,9 @@ public sealed record AudioDevice(string Id, string Name);
 
 public static unsafe class WasapiDevices
 {
+    /// <summary>Имя устройства, когда драйвер не отдал настоящее. В настройки не записывается (см. <c>MicrophoneSelector.NameToRemember</c>).</summary>
+    public const string UnknownDeviceName = "Микрофон";
+
     internal static readonly Guid MMDeviceEnumeratorClsid = new("BCDE0395-E52F-467C-8E3D-C4579291692E");
 
     /// <summary>Активные устройства записи с понятными именами.</summary>
@@ -103,7 +106,7 @@ public static unsafe class WasapiDevices
         IPropertyStore* store = null;
         if (device->OpenPropertyStoreHr(STGM.STGM_READ, &store).Failed)
         {
-            return "Микрофон";
+            return UnknownDeviceName;
         }
 
         try
@@ -112,14 +115,14 @@ public static unsafe class WasapiDevices
             PROPVARIANT value;
             if (store->GetValueHr(&key, &value).Failed)
             {
-                return "Микрофон";
+                return UnknownDeviceName;
             }
 
             try
             {
                 return value.Anonymous.Anonymous.vt == VARENUM.VT_LPWSTR
                     ? value.Anonymous.Anonymous.Anonymous.pwszVal.ToString()
-                    : "Микрофон";
+                    : UnknownDeviceName;
             }
             finally
             {

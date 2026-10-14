@@ -301,6 +301,10 @@ public sealed partial class RecognitionPage : UserControl
             {
                 Show(GeminiInfo, "Ключ Gemini не задан.", InfoBarSeverity.Warning);
             }
+            else if (!TryParseGeminiEndpoint(r.GeminiEndpoint, out var endpoint))
+            {
+                Show(GeminiInfo, ErrorMessages.Describe(EngineErrorKind.InvalidEndpoint, "Gemini"), InfoBarSeverity.Error);
+            }
             else
             {
                 Show(GeminiInfo, "Gemini: проверяем…", InfoBarSeverity.Informational);
@@ -309,7 +313,7 @@ public sealed partial class RecognitionPage : UserControl
                 for (var i = 0; i < keys.Count; i++)
                 {
                     var name = keys.Count == 1 ? "Gemini" : $"Ключ {i + 1}";
-                    var connection = new GeminiConnection(new Uri(r.GeminiEndpoint), keys[i],
+                    var connection = new GeminiConnection(endpoint, keys[i],
                         new GeminiSessionOptions(r.GeminiModel, r.Mode, r.LanguageCodes, _model.Settings.Vocabulary));
                     var error = await GeminiKeyCheck.CheckAsync(new ClientWebSocketTransport(), connection, TimeSpan.FromSeconds(10));
                     if (error is { } kind)
@@ -350,13 +354,28 @@ public sealed partial class RecognitionPage : UserControl
         }
         catch (Exception ex)
         {
-            // Сообщение исключения не содержит ключей: они передаются заголовком, а не в адресе.
+            // Сообщение исключения не содержит ключей (они передаются заголовком, а не в адресе) и уходит только в журнал:
+            // в интерфейсе оно было бы англоязычным или ключом ресурса (UseSystemResourceKeys).
             Log.Error("Проверка ключей", ex);
-            Show(GeminiInfo, "Не удалось выполнить проверку: " + ex.Message, InfoBarSeverity.Error);
+            Show(GeminiInfo, "Не удалось выполнить проверку — подробности в журнале", InfoBarSeverity.Error);
         }
         finally
         {
             CheckButton.IsEnabled = true;
+        }
+    }
+
+    private static bool TryParseGeminiEndpoint(string text, out Uri endpoint)
+    {
+        try
+        {
+            endpoint = GeminiConnection.ParseEndpoint(text);
+            return true;
+        }
+        catch (TranscriptionException)
+        {
+            endpoint = null!;
+            return false;
         }
     }
 

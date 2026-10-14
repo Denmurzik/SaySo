@@ -1,4 +1,3 @@
-using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using SaySo.Core.Diagnostics;
 using SaySo.Core.Interop;
@@ -12,6 +11,7 @@ namespace SaySo.Settings;
 internal static unsafe partial class WindowMinSize
 {
     private const uint WM_GETMINMAXINFO = 0x0024;
+    private const uint WM_NCDESTROY = 0x0082;
     private const nuint SubclassId = 0x5359; // "SY"
 
     private static int s_minWidthDip;
@@ -40,6 +40,13 @@ internal static unsafe partial class WindowMinSize
     [UnmanagedCallersOnly]
     private static nint SubclassProc(nint hwnd, uint message, nuint wParam, nint lParam, nuint id, nuint refData)
     {
+        if (message == WM_NCDESTROY)
+        {
+            // Окно уничтожается: подкласс снимается, иначе он остался бы привязанным к освобождённому окну.
+            RemoveWindowSubclass(hwnd, &SubclassProc, SubclassId);
+            return DefSubclassProc(hwnd, message, wParam, lParam);
+        }
+
         var result = DefSubclassProc(hwnd, message, wParam, lParam);
         if (message == WM_GETMINMAXINFO)
         {
@@ -62,6 +69,10 @@ internal static unsafe partial class WindowMinSize
     [LibraryImport("comctl32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static partial bool SetWindowSubclass(nint hwnd, delegate* unmanaged<nint, uint, nuint, nint, nuint, nuint, nint> proc, nuint id, nuint refData);
+
+    [LibraryImport("comctl32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool RemoveWindowSubclass(nint hwnd, delegate* unmanaged<nint, uint, nuint, nint, nuint, nuint, nint> proc, nuint id);
 
     [LibraryImport("comctl32.dll")]
     private static partial nint DefSubclassProc(nint hwnd, uint message, nuint wParam, nint lParam);

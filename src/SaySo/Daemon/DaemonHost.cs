@@ -18,7 +18,7 @@ namespace SaySo.Daemon;
 internal sealed class DaemonHost : IDisposable
 {
     private const uint CmdInsertLast = 1, CmdCopyLast = 2, CmdSettings = 3, CmdPause = 4, CmdExit = 5;
-    private static readonly TimeSpan QuitWait = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan QuitWait = IpcProtocol.QuitGrace;
     private const string MutexName = @"Local\SaySo.Daemon";
 
     private readonly AppPaths _paths;
@@ -571,6 +571,8 @@ internal sealed class DaemonHost : IDisposable
 
         if (_quitAfterSession)
         {
+            _quitTimer?.Dispose(); // страховка больше не нужна: сессия закончилась сама
+            _quitTimer = null;
             Native.PostQuitMessage(0);
             return;
         }

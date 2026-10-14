@@ -179,13 +179,39 @@ public class MicrophoneSelectorTests
     }
 
     [Fact]
-    public void BluetoothHeadsetAndHeadphones_AreNotMerged()
+    public void BluetoothHandsFreeProfiles_OfOneDevice_AreNotMerged()
     {
-        // Одно физическое устройство Bluetooth даёт две конечные точки с разными именами — это разные выборы.
-        var r = MicrophoneSelector.Resolve("old", "Headset (Jabra Evolve Hands-Free AG Audio)", [Active("stereo", "Headphones (Jabra Evolve Stereo)")]);
+        // Одно физическое устройство Bluetooth в профиле «hands-free» даёт две конечные точки записи, различающиеся только
+        // суффиксом профиля (HF / AG) — для Windows это разные устройства, и подменять одно другим нельзя.
+        var r = MicrophoneSelector.Resolve("old", "Headset (Jabra Evolve Hands-Free HF Audio)", [Active("ag", "Headset (Jabra Evolve Hands-Free AG Audio)")]);
 
         Assert.Equal(MicrophoneMatch.Fallback, r.Match);
     }
+
+    [Fact]
+    public void BluetoothHandsFreeProfiles_ExactNameStillWins()
+    {
+        var r = MicrophoneSelector.Resolve("old", "Headset (Jabra Evolve Hands-Free HF Audio)",
+            [Active("ag", "Headset (Jabra Evolve Hands-Free AG Audio)"), Active("hf", "Headset (Jabra Evolve Hands-Free HF Audio)")]);
+
+        Assert.Equal(MicrophoneMatch.ByName, r.Match);
+        Assert.Equal("hf", r.Endpoint!.Id);
+    }
+
+    [Theory]
+    [InlineData(null, null)]
+    [InlineData("", null)]
+    [InlineData("   ", null)]
+    [InlineData("Микрофон", null)]       // заглушка: драйвер не отдал имя
+    [InlineData("  Микрофон ", null)]
+    [InlineData("Микрофон (USB Audio)", "Микрофон (USB Audio)")]
+    [InlineData("  Гарнитура ", "Гарнитура")]
+    public void NameToRemember_SkipsPlaceholderAndBlank(string? name, string? expected) =>
+        Assert.Equal(expected, MicrophoneSelector.NameToRemember(name));
+
+    [Fact]
+    public void NameToRemember_PlaceholderConstantMatchesWhatDeviceListReturns() =>
+        Assert.Null(MicrophoneSelector.NameToRemember(WasapiDevices.UnknownDeviceName));
 
     [Theory]
     [InlineData("Микрофон (Realtek(R) Audio)")]

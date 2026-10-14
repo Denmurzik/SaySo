@@ -12,6 +12,7 @@ namespace SaySo.Settings;
 internal static class AdminModeSwitcher
 {
     private const int ErrorCancelled = 1223;
+    private static readonly TimeSpan DaemonExitWait = IpcProtocol.QuitGrace + TimeSpan.FromSeconds(2);
 
     /// <param name="enable">Новый режим.</param>
     /// <param name="persist">
@@ -52,7 +53,9 @@ internal static class AdminModeSwitcher
         }
 
         IpcClient.Send(IpcProtocol.Quit);
-        for (var i = 0; i < 50 && IpcClient.IsDaemonRunning(); i++)
+        // Демон при выходе может ждать конец диктовки до QuitGrace (10 с), поэтому ждём его закрытия заметно дольше.
+        var deadline = Stopwatch.StartNew();
+        while (deadline.Elapsed < DaemonExitWait && IpcClient.IsDaemonRunning())
         {
             await Task.Delay(100);
         }
