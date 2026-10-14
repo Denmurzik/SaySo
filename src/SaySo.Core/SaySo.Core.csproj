@@ -10,4 +10,31 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.Windows.CsWin32" Version="0.3.360" PrivateAssets="all" />
   </ItemGroup>
+  <ItemGroup>
+    <!-- Звуковые темы: ресурсы с постоянными именами SaySo.Sounds.<тема>.<вид>.wav (читаются только выбранной темой). -->
+    <EmbeddedResource Include="Assets\Sounds\1-steklo\start.wav" LogicalName="SaySo.Sounds.1-steklo.start.wav" />
+    <EmbeddedResource Include="Assets\Sounds\1-steklo\stop.wav" LogicalName="SaySo.Sounds.1-steklo.stop.wav" />
+    <EmbeddedResource Include="Assets\Sounds\1-steklo\error.wav" LogicalName="SaySo.Sounds.1-steklo.error.wav" />
+    <EmbeddedResource Include="Assets\Sounds\2-kaplya\start.wav" LogicalName="SaySo.Sounds.2-kaplya.start.wav" />
+    <EmbeddedResource Include="Assets\Sounds\2-kaplya\stop.wav" LogicalName="SaySo.Sounds.2-kaplya.stop.wav" />
+    <EmbeddedResource Include="Assets\Sounds\2-kaplya\error.wav" LogicalName="SaySo.Sounds.2-kaplya.error.wav" />
+    <EmbeddedResource Include="Assets\Sounds\3-derevo\start.wav" LogicalName="SaySo.Sounds.3-derevo.start.wav" />
+    <EmbeddedResource Include="Assets\Sounds\3-derevo\stop.wav" LogicalName="SaySo.Sounds.3-derevo.stop.wav" />
+    <EmbeddedResource Include="Assets\Sounds\3-derevo\error.wav" LogicalName="SaySo.Sounds.3-derevo.error.wav" />
+    <EmbeddedResource Include="Assets\Sounds\4-kolokolchik\start.wav" LogicalName="SaySo.Sounds.4-kolokolchik.start.wav" />
+    <EmbeddedResource Include="Assets\Sounds\4-kolokolchik\stop.wav" LogicalName="SaySo.Sounds.4-kolokolchik.stop.wav" />
+    <EmbeddedResource Include="Assets\Sounds\4-kolokolchik\error.wav" LogicalName="SaySo.Sounds.4-kolokolchik.error.wav" />
+    <EmbeddedResource Include="Assets\Sounds\5-voylok\start.wav" LogicalName="SaySo.Sounds.5-voylok.start.wav" />
+    <EmbeddedResource Include="Assets\Sounds\5-voylok\stop.wav" LogicalName="SaySo.Sounds.5-voylok.stop.wav" />
+    <EmbeddedResource Include="Assets\Sounds\5-voylok\error.wav" LogicalName="SaySo.Sounds.5-voylok.error.wav" />
+    <EmbeddedResource Include="Assets\Sounds\6-podushka\start.wav" LogicalName="SaySo.Sounds.6-podushka.start.wav" />
+    <EmbeddedResource Include="Assets\Sounds\6-podushka\stop.wav" LogicalName="SaySo.Sounds.6-podushka.stop.wav" />
+    <EmbeddedResource Include="Assets\Sounds\6-podushka\error.wav" LogicalName="SaySo.Sounds.6-podushka.error.wav" />
+    <EmbeddedResource Include="Assets\Sounds\7-tap\start.wav" LogicalName="SaySo.Sounds.7-tap.start.wav" />
+    <EmbeddedResource Include="Assets\Sounds\7-tap\stop.wav" LogicalName="SaySo.Sounds.7-tap.stop.wav" />
+    <EmbeddedResource Include="Assets\Sounds\7-tap\error.wav" LogicalName="SaySo.Sounds.7-tap.error.wav" />
+    <EmbeddedResource Include="Assets\Sounds\8-kalimba\start.wav" LogicalName="SaySo.Sounds.8-kalimba.start.wav" />
+    <EmbeddedResource Include="Assets\Sounds\8-kalimba\stop.wav" LogicalName="SaySo.Sounds.8-kalimba.stop.wav" />
+    <EmbeddedResource Include="Assets\Sounds\8-kalimba\error.wav" LogicalName="SaySo.Sounds.8-kalimba.error.wav" />
+  </ItemGroup>
 </Project>
