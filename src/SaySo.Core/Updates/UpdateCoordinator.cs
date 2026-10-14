@@ -68,6 +68,7 @@ public sealed class UpdateCoordinator(
     private IDisposable? _checkTimer;
     private bool _disposed;
     private bool _checkDeferred;
+    private bool _checkNowDeferred;
     private bool _installRequested;
     private bool _installing;
     private Version? _balloonVersion;
@@ -85,9 +86,23 @@ public sealed class UpdateCoordinator(
 
     /// <summary>
     /// Проверка по просьбе окна настроек: без суточного ограничения и без всплывающего уведомления
-    /// (пользователь и так смотрит на результат). Выключенная автопроверка ей не мешает.
+    /// (пользователь и так смотрит на результат). Выключенная автопроверка ей не мешает. Идёт диктовка — ждёт её конца.
     /// </summary>
-    public Task CheckNowAsync() => CheckAsync(notify: false);
+    public Task CheckNowAsync()
+    {
+        if (_disposed)
+        {
+            return Task.CompletedTask;
+        }
+
+        if (!host.IsDictationIdle)
+        {
+            _checkNowDeferred = true;
+            return Task.CompletedTask;
+        }
+
+        return CheckAsync(notify: false);
+    }
 
     /// <summary>Конец диктовочной сессии: выполнить отложенное (уведомление, запуск Setup, установку, проверку).</summary>
     public void OnSessionEnded()
@@ -110,6 +125,11 @@ public sealed class UpdateCoordinator(
         else if (_installRequested)
         {
             _ = ObserveAsync(InstallAsync(), "Отложенная установка обновления");
+        }
+        else if (_checkNowDeferred)
+        {
+            _checkNowDeferred = false;
+            _ = ObserveAsync(CheckNowAsync(), "Отложенная проверка обновлений");
         }
         else if (_checkDeferred)
         {

@@ -11,13 +11,14 @@ using SaySo.Core.Overlay;
 using SaySo.Core.Platform;
 using SaySo.Core.Settings;
 using SaySo.Core.Storage;
+using SaySo.Core.Updates;
 
 namespace SaySo.Daemon;
 
 /// <summary>Фоновый процесс SaySo: трей, горячая клавиша, IPC. XAML здесь не используется.</summary>
 internal sealed class DaemonHost : IDisposable
 {
-    private const uint CmdInsertLast = 1, CmdCopyLast = 2, CmdSettings = 3, CmdPause = 4, CmdExit = 5;
+    private const uint CmdInsertLast = 1, CmdCopyLast = 2, CmdSettings = 3, CmdPause = 4, CmdExit = 5, CmdUpdate = 6;
     private static readonly TimeSpan QuitWait = IpcProtocol.QuitGrace;
     private const string MutexName = @"Local\SaySo.Daemon";
 
@@ -39,6 +40,7 @@ internal sealed class DaemonHost : IDisposable
     private readonly HttpClient _http = SettingsDictationEngines.CreateHttpClient();
     private readonly SettingsDictationEngines _engines;
     private readonly DictationCoordinator _dictation;
+    private readonly UpdateCoordinator _updates;
     private IDisposable? _trimTimer;
 
     // Что реально применено к слушателю хука. SetSuspended и Configure сбрасывают автомат (посреди удержания клавиши
@@ -86,6 +88,14 @@ internal sealed class DaemonHost : IDisposable
             // Именно асинхронный Post: onError приходит с потока WASAPI, а StopCapture ждёт его завершения — Send зашёл бы в тупик.
             action => _window.Sync.Post(_ => action(), null),
             TimeProvider.System);
+        _updates = new UpdateCoordinator(
+            new DaemonUpdateHost(_window, _tray, _overlay, () => _dictation.State, RequestQuit, OnUpdateOperationFinished),
+            new UpdateStateStore(paths),
+            typeof(DaemonHost).Assembly.GetName().Version ?? new Version(0, 0, 0),
+            UpdateEnvironment.Current(),
+            () => _settings.CheckForUpdates,
+            UpdateHttp.Create, // свой HttpClient на каждую операцию: после неё в процессе нет ни одного сокета
+            TimeProvider.System);
         CreateHotkey();
 
         _window.HotkeyPressed += OnHotkey;
@@ -95,10 +105,12 @@ internal sealed class DaemonHost : IDisposable
         _window.TaskbarCreated += OnTaskbarCreated;
         _window.SessionLockChanged += OnSessionLockChanged;
         _window.PowerResumed += () => TryReinstallHotkey("выход из сна", cancelRecording: true);
+        _window.PowerResumed += _updates.OnResume;
         _window.ThemeChanged += RefreshIcons;
         _dictation.SessionEnded += OnSessionEnded;
         UpdateTray(TrayState.Idle);
         ScheduleTrim(TimeSpan.FromSeconds(3));
+        _updates.OnStart(); // одноразовый таймер на 60 с, если с прошлой проверки прошли сутки
     }
 
     /// <summary>
@@ -188,6 +200,7 @@ internal sealed class DaemonHost : IDisposable
 
         _hotkey?.Dispose();
         _hotkey = null;
+        _updates.Dispose();
         _overlay.Dispose();
         _http.Dispose();
         _tray.Dispose();
@@ -335,6 +348,12 @@ internal sealed class DaemonHost : IDisposable
                 TryReinstallHotkey("меню значка");
                 ShowMenu();
                 break;
+            case Native.NIN_BALLOONUSERCLICK:
+                _ = ObserveAsync(_updates.OnBalloonClickedAsync(), "Обновление по щелчку на уведомлении");
+                break;
+            case Native.NIN_BALLOONTIMEOUT or Native.NIN_BALLOONHIDE:
+                _updates.OnBalloonClosed(); // закрыто крестиком или по таймауту: о этой версии больше не всплываем
+                break;
         }
     }
 
@@ -349,7 +368,14 @@ internal sealed class DaemonHost : IDisposable
     {
         var last = _history.Load().FirstOrDefault();
         var canInsert = last is not null && LastTarget != 0 && Native.IsWindow(LastTarget);
-        var command = TrayMenu.Show(_window.Handle,
+        var items = new List<TrayMenuItem>();
+        if (_updates.Pending is { } update)
+        {
+            items.Add(new TrayMenuItem(CmdUpdate, UpdateMessages.MenuItem(update.Version)));
+            items.Add(TrayMenuItem.Separator);
+        }
+
+        items.AddRange(
         [
             new TrayMenuItem(CmdInsertLast, "Вставить последнее", canInsert),
             new TrayMenuItem(CmdCopyLast, "Скопировать последнее", last is not null),
@@ -359,6 +385,7 @@ internal sealed class DaemonHost : IDisposable
             TrayMenuItem.Separator,
             new TrayMenuItem(CmdExit, "Выход"),
         ]);
+        var command = TrayMenu.Show(_window.Handle, items);
 
         switch (command)
         {
@@ -385,6 +412,9 @@ internal sealed class DaemonHost : IDisposable
                 break;
             case CmdExit:
                 RequestQuit();
+                break;
+            case CmdUpdate:
+                _ = ObserveAsync(_updates.InstallAsync(), "Обновление из меню");
                 break;
         }
     }
@@ -459,6 +489,12 @@ internal sealed class DaemonHost : IDisposable
             case IpcProtocol.Quit:
                 RequestQuit();
                 break;
+            case IpcProtocol.CheckUpdates:
+                _ = ObserveAsync(_updates.CheckNowAsync(), "Проверка обновлений по просьбе окна настроек");
+                break;
+            case IpcProtocol.InstallUpdate:
+                _ = ObserveAsync(_updates.InstallAsync(), "Установка обновления по просьбе окна настроек");
+                break;
         }
     }
 
@@ -504,6 +540,7 @@ internal sealed class DaemonHost : IDisposable
         }
 
         TryReinstallHotkey("разблокировка сеанса");
+        _updates.OnUnlock();
     }
 
     private HotkeyListener CreateListener() =>
@@ -579,6 +616,7 @@ internal sealed class DaemonHost : IDisposable
 
         ScheduleTrim(TimeSpan.FromSeconds(2));
         ApplyPendingHotkeyChanges();
+        _updates.OnSessionEnded(); // отложенное уведомление, проверка или запуск Setup
     }
 
     private void ApplyPendingHotkeyChanges()
@@ -746,6 +784,15 @@ internal sealed class DaemonHost : IDisposable
     // Координатор сообщает «Idle» после каждой сессии; при ручной паузе значок остаётся «приостановлено».
     private void OnDictationTray(TrayState state, string? detail) =>
         UpdateTray(state == TrayState.Idle && _paused ? TrayState.Paused : state, detail);
+
+    // Проверка или скачивание обновления закончились: HttpClient уничтожен, остаётся вернуть системе память кучи.
+    private void OnUpdateOperationFinished()
+    {
+        if (!_disposing)
+        {
+            ScheduleTrim(TimeSpan.FromSeconds(2));
+        }
+    }
 
     private void ScheduleTrim(TimeSpan delay)
     {

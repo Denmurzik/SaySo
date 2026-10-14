@@ -423,6 +423,23 @@ public sealed class UpdateCoordinatorTests : IDisposable
         Assert.Equal(1, _handler.Count(UpdateChecker.LatestReleaseUrl));
     }
 
+    [Fact]
+    public async Task CheckNow_DuringDictation_WaitsForSessionEnd_AndStaysSilent()
+    {
+        ServeRelease();
+        _host.Idle = false;
+
+        await Coordinator.CheckNowAsync();
+        Assert.Empty(_handler.Requests);
+
+        _host.Idle = true;
+        Coordinator.OnSessionEnded();
+        await Settle(() => _host.Finished == 1);
+
+        Assert.Equal(new Version(0, 2, 0), Coordinator.Pending!.Version);
+        Assert.Empty(_host.Balloons);
+    }
+
     // ---- установка ----
 
     [Fact]
