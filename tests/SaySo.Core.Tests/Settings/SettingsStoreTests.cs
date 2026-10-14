@@ -3,8 +3,43 @@ using SaySo.Core.Storage;
 
 namespace SaySo.Core.Tests.Settings;
 
+[Collection("Log")] // при сбоях Load пишет в статический Log
 public class SettingsStoreTests
 {
+    [Fact]
+    public void Load_FileLockedForGood_ReturnsDefaultsWithoutThrowing()
+    {
+        using var dir = new TempDir();
+        var paths = new AppPaths(dir.Path);
+        var store = new SettingsStore(paths);
+        var s = store.Load();
+        s.Hotkey.TapThresholdMs = 400;
+        store.Save(s);
+
+        using (new HeldFile(paths.SettingsFile))
+        {
+            Assert.Equal(300, store.Load().Hotkey.TapThresholdMs);
+        }
+
+        Assert.False(File.Exists(paths.SettingsFile + ".bad"));
+    }
+
+    [Fact]
+    public void Load_FileBrieflyLocked_RetriesAndReturnsContent()
+    {
+        using var dir = new TempDir();
+        var paths = new AppPaths(dir.Path);
+        var store = new SettingsStore(paths);
+        var s = store.Load();
+        s.Hotkey.TapThresholdMs = 400;
+        store.Save(s);
+
+        using (new HeldFile(paths.SettingsFile).ReleaseAfter(TimeSpan.FromMilliseconds(80)))
+        {
+            Assert.Equal(400, store.Load().Hotkey.TapThresholdMs);
+        }
+    }
+
     [Fact]
     public void Load_WhenFileMissing_ReturnsDefaults()
     {

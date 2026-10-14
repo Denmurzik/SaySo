@@ -48,14 +48,15 @@ public sealed class HistoryStore(AppPaths paths)
 
     private List<HistoryEntry> LoadUnlocked()
     {
-        if (!File.Exists(paths.HistoryFile))
+        var cipher = StoreFile.TryReadAllBytes(paths.HistoryFile, "HistoryStore");
+        if (cipher is null)
         {
             return [];
         }
 
         try
         {
-            var plain = Dpapi.Unprotect(File.ReadAllBytes(paths.HistoryFile));
+            var plain = Dpapi.Unprotect(cipher);
             try
             {
                 return JsonSerializer.Deserialize(plain, SaySoJsonContext.Default.ListHistoryEntry) ?? [];
@@ -65,8 +66,10 @@ public sealed class HistoryStore(AppPaths paths)
                 CryptographicOperations.ZeroMemory(plain);
             }
         }
-        catch (Exception e) when (e is CryptographicException or JsonException or IOException)
+        catch (Exception e) when (e is CryptographicException or JsonException)
         {
+            // Повреждённый файл: копия в history.bin.bad, история начинается заново.
+            StoreFile.Quarantine(paths.HistoryFile, "HistoryStore", e);
             return [];
         }
     }

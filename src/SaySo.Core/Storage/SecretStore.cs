@@ -28,14 +28,15 @@ public sealed class SecretStore(AppPaths paths)
 {
     public Secrets Load()
     {
-        if (!File.Exists(paths.SecretsFile))
+        var cipher = StoreFile.TryReadAllBytes(paths.SecretsFile, "SecretStore");
+        if (cipher is null)
         {
             return new Secrets();
         }
 
         try
         {
-            var plain = Dpapi.Unprotect(File.ReadAllBytes(paths.SecretsFile));
+            var plain = Dpapi.Unprotect(cipher);
             try
             {
                 return (JsonSerializer.Deserialize(plain, SaySoJsonContext.Default.Secrets) ?? new Secrets()).Clean();
@@ -45,8 +46,10 @@ public sealed class SecretStore(AppPaths paths)
                 CryptographicOperations.ZeroMemory(plain);
             }
         }
-        catch (Exception e) when (e is CryptographicException or JsonException or IOException)
+        catch (Exception e) when (e is CryptographicException or JsonException)
         {
+            // Повреждённый файл: копия в secrets.bin.bad; ключи придётся ввести заново.
+            StoreFile.Quarantine(paths.SecretsFile, "SecretStore", e);
             return new Secrets();
         }
     }

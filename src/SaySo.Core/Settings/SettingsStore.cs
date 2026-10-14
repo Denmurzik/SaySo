@@ -10,21 +10,21 @@ public sealed class SettingsStore(AppPaths paths)
     public AppSettings Load()
     {
         var path = paths.SettingsFile;
-        if (!File.Exists(path))
+        var bytes = StoreFile.TryReadAllBytes(path, "SettingsStore");
+        if (bytes is null)
         {
             return SettingsNormalizer.Normalize(new AppSettings());
         }
 
         try
         {
-            var bytes = File.ReadAllBytes(path);
             var settings = JsonSerializer.Deserialize(bytes, SaySoJsonContext.Default.AppSettings) ?? new AppSettings();
             return SettingsNormalizer.Normalize(settings);
         }
-        catch (JsonException)
+        catch (JsonException e)
         {
             // Повреждённый файл: сохраняем копию для диагностики и работаем с настройками по умолчанию.
-            try { File.Copy(path, path + ".bad", overwrite: true); } catch (IOException) { }
+            StoreFile.Quarantine(path, "SettingsStore", e);
             return SettingsNormalizer.Normalize(new AppSettings());
         }
     }
