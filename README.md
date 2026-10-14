@@ -16,11 +16,12 @@
 
 ## Why SaySo
 
-- **Smart, not verbatim.** Speech is transcribed by **Gemini 3.5 Transcribe** in *Smart* mode: filler words are removed, self-corrections are resolved (*“Friday — no, Saturday”* → *“Saturday”*), punctuation, casing and numbers are formatted.
+- **Smart, not verbatim.** Speech is transcribed by **Gemini 3.5 Transcribe** in *Smart* («Умный») mode: filler words are removed, self-corrections are resolved (*“Friday — no, Saturday”* → *“Saturday”*), punctuation, casing and numbers are formatted.
 - **Tiny in the background.** A NativeAOT daemon that never loads XAML: **{idleWs} MB** working set at idle (**{idlePrivate} MB** private). The WinUI 3 settings window is a separate process that fully exits when you close it.
 - **Never loses what you said.** Add several Gemini keys and SaySo switches to the next one the moment a key hits its quota — even mid-sentence, re-sending what was already recorded. No keys left or network down? The recording goes to **Groq Whisper** with LLM cleanup instead.
 - **Works everywhere.** Pastes into whatever app is focused; your clipboard text is restored and dictations are kept out of Win+V history.
 - **Private by default.** Audio never touches the disk. API keys and history are encrypted with Windows DPAPI. Data flow: audio and your vocabulary terms go to Google Gemini; if the fallback kicks in, audio and the transcript go to Groq; checking API keys also calls these APIs.
+- **Russian interface.** The app's interface is currently in Russian; the Russian labels of settings pages, buttons and menu items are given in parentheses throughout this README.
 
 ## How it works
 
@@ -38,7 +39,7 @@ flowchart LR
 | Hold **Right Ctrl** | Recording while held; text is pasted when released |
 | Tap **Right Ctrl** | Hands-free mode; tap again to finish |
 | **Esc** while recording | Cancel, nothing is pasted |
-| Tray → *Paste last* / *Copy last* | Recover the last dictation |
+| Tray → *Paste last* («Вставить последнее») / *Copy last* («Скопировать последнее») | Recover the last dictation |
 
 The hotkey, language, model, vocabulary and microphone are configurable.
 
@@ -62,21 +63,21 @@ Uninstall: `powershell -ExecutionPolicy Bypass -File .\uninstall.ps1` (add `-Rem
 - **Gemini** — create a key in [Google AI Studio](https://aistudio.google.com/apikey). Your own free-tier limits are shown in AI Studio (Google does not publish fixed numbers for this preview model). On the free tier Google may use requests to improve its products. The Gemini API is not available in some regions (including Russia) — a system-wide VPN is required there.
 - **Groq** (optional fallback) — create a key in the [Groq Console](https://console.groq.com/keys).
 
-Paste the keys into *Settings → Recognition* (you can add several Gemini keys) and press *Check keys*.
+Paste the keys into *Settings → Recognition* («Распознавание») (you can add several Gemini keys) and press *Check keys* («Проверить ключи»).
 
 Windows must allow desktop apps to use the microphone: *Settings → Privacy & security → Microphone*.
 
 ## Settings
 
-Open them from the tray icon (double-click, or right-click → *Settings…*). The window is titled “SaySo” and has a side menu that is always open: General, Recognition, Dictionary, Microphone, History, About. The window is a separate process: closing it ends it.
+Open them from the tray icon (double-click, or right-click → *Settings…* («Настройки…»)). The window is titled “SaySo” and has a side menu that is always open: General («Общие»), Recognition («Распознавание»), Dictionary («Словарь»), Microphone («Микрофон»), History («История»), About («О программе»). The window is a separate process: closing it ends it.
 
 ### Microphone
 
-SaySo remembers the microphone you pick. A chosen headset is used automatically whenever it is connected again: it is matched by device Id, and by name if Windows gave it a new Id after you plugged it into another USB port. While it is unplugged, dictation uses the Windows default microphone. An explicitly chosen built-in microphone stays selected even when a headset is connected. *Same as Windows (default)* always follows the Windows default device.
+SaySo remembers the microphone you pick. A chosen headset is used automatically whenever it is connected again: it is matched by device Id, and by name if Windows gave it a new Id after you plugged it into another USB port. While it is unplugged, dictation uses the Windows default microphone. An explicitly chosen built-in microphone stays selected even when a headset is connected. *Same as Windows (default)* («Как в Windows (по умолчанию)») always follows the Windows default device.
 
 ### Admin mode (optional)
 
-Windows does not let a normal app paste into windows running as administrator (elevated terminals, some IDEs): SaySo leaves the text on the clipboard and says so on the overlay. *General → Run as administrator* lifts this: SaySo is then started at logon by a Task Scheduler task with the highest privileges (one UAC prompt when you switch it on). Admin mode launches `SaySo.exe` elevated from its install folder, which is writable by programs running under your account — enable it only if you trust the software on this PC.
+Windows does not let a normal app paste into windows running as administrator (elevated terminals, some IDEs): SaySo leaves the text on the clipboard and says so on the overlay. *General → Run as administrator* («Общие» → «Запускать от имени администратора») lifts this: SaySo is then started at logon by a Task Scheduler task with the highest privileges (one UAC prompt when you switch it on). Admin mode launches `SaySo.exe` elevated from its install folder, which is writable by programs running under your account — enable it only if you trust the software on this PC.
 
 ## Memory footprint
 
