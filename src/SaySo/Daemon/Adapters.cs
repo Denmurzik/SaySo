@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using SaySo.Core.Audio.Wasapi;
 using SaySo.Core.Diagnostics;
 using SaySo.Core.Dictation;
@@ -69,12 +70,23 @@ internal sealed class DaemonFeedback(Action<TrayState> setTray) : IDictationFeed
 }
 
 /// <summary>Таймеры координатора на окне демона: действия выполняются на главном потоке.</summary>
-internal sealed class WindowScheduler(DaemonWindow window) : IScheduler
+internal sealed class WindowScheduler(DaemonWindow window, Action onFailure) : IScheduler
 {
     public IDisposable Schedule(TimeSpan delay, Action action)
     {
         var handle = new Handle(action);
-        handle.Timer = window.SetTimer(delay, handle.Run);
+        try
+        {
+            handle.Timer = window.SetTimer(delay, handle.Run);
+        }
+        catch (Win32Exception e)
+        {
+            // Тихая потеря таймера означала бы запись без автостопа: сообщаем владельцу, он отменит сессию с ошибкой.
+            Log.Error("Таймер диктовки", e);
+            handle.Dispose();
+            onFailure();
+        }
+
         return handle;
     }
 

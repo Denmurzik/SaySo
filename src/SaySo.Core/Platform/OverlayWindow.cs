@@ -25,6 +25,7 @@ internal sealed unsafe class OverlayWindow : NativeWindow, IDictationOverlay
     private bool _visible;
     private float _smoothed;
     private long _hideAt;
+    private bool _layerFailureLogged;
     private nint _memDc;
     private nint _dib;
     private uint* _bits;
@@ -129,8 +130,10 @@ internal sealed unsafe class OverlayWindow : NativeWindow, IDictationOverlay
     private bool Present(bool animate)
     {
         Native.KillTimer(Handle, HideTimer);
+        _layerFailureLogged = false;
         if (!Draw())
         {
+            Hide(); // таймер анимации не должен пережить неудачный кадр
             return false;
         }
 
@@ -163,7 +166,10 @@ internal sealed unsafe class OverlayWindow : NativeWindow, IDictationOverlay
             _levels[^1] = _smoothed;
         }
 
-        Draw();
+        if (!Draw())
+        {
+            Hide();
+        }
     }
 
     /// <returns>false — не удалось создать DIB, плашка не нарисована.</returns>
@@ -187,7 +193,13 @@ internal sealed unsafe class OverlayWindow : NativeWindow, IDictationOverlay
         var size = new Native.SIZE { cx = w, cy = h };
         var source = new Native.POINT();
         var blend = new Native.BLENDFUNCTION { BlendOp = Native.AC_SRC_OVER, SourceConstantAlpha = 255, AlphaFormat = Native.AC_SRC_ALPHA };
-        Native.UpdateLayeredWindow(Handle, 0, &position, &size, _memDc, &source, 0, &blend, Native.ULW_ALPHA);
+        if (!Native.UpdateLayeredWindow(Handle, 0, &position, &size, _memDc, &source, 0, &blend, Native.ULW_ALPHA)
+            && !_layerFailureLogged)
+        {
+            _layerFailureLogged = true; // раз за показ: кадры идут каждые 33 мс
+            PlatformLog.Info($"UpdateLayeredWindow не удался: код {System.Runtime.InteropServices.Marshal.GetLastPInvokeError()}");
+        }
+
         return true;
     }
 

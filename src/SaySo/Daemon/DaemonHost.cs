@@ -7,6 +7,7 @@ using SaySo.Core.Engines.Gemini;
 using SaySo.Core.Hotkeys;
 using SaySo.Core.Input;
 using SaySo.Core.Interop;
+using SaySo.Core.Overlay;
 using SaySo.Core.Platform;
 using SaySo.Core.Settings;
 using SaySo.Core.Storage;
@@ -44,7 +45,10 @@ internal sealed class DaemonHost : IDisposable
     private int[] _appliedKeys = [];
     private int _appliedThresholdMs;
     private bool _cancelInFlight;
+    private bool _failingSession;
+    private bool _disposing;
     private string? _pendingReinstall;
+    private nint _dictationTarget;
 
     private DaemonHost(AppPaths paths, SettingsStore settingsStore, AppSettings settings)
     {
@@ -68,7 +72,7 @@ internal sealed class DaemonHost : IDisposable
             _overlay,
             new InserterOutput(_inserter),
             new DaemonFeedback(OnDictationTray),
-            new WindowScheduler(_window),
+            new WindowScheduler(_window, OnSchedulingFailed),
             _history,
             () => _settings,
             () => _hotkey?.Reset(),
@@ -83,15 +87,18 @@ internal sealed class DaemonHost : IDisposable
         _window.CloseRequested += OnCloseRequested;
         _window.TaskbarCreated += OnTaskbarCreated;
         _window.SessionLockChanged += OnSessionLockChanged;
-        _window.PowerResumed += () => TryReinstallHotkey("выход из сна");
+        _window.PowerResumed += () => TryReinstallHotkey("выход из сна", cancelRecording: true);
         _window.ThemeChanged += RefreshIcons;
         _dictation.SessionEnded += OnSessionEnded;
         UpdateTray(TrayState.Idle);
         ScheduleTrim(TimeSpan.FromSeconds(3));
     }
 
-    /// <summary>Окно, в которое была последняя вставка (для «Вставить последнее»).</summary>
-    internal nint LastTarget => _inserter.Last?.Window ?? 0;
+    /// <summary>
+    /// Окно для «Вставить последнее»: окно переднего плана в момент нажатия горячей клавиши последней диктовки
+    /// (до первой диктовки — окно последней вставки).
+    /// </summary>
+    internal nint LastTarget => _dictationTarget != 0 ? _dictationTarget : _inserter.Last?.Window ?? 0;
 
     private static string ExePath => Environment.ProcessPath ?? Path.Combine(AppContext.BaseDirectory, "SaySo.exe");
 
@@ -165,6 +172,13 @@ internal sealed class DaemonHost : IDisposable
 
     public void Dispose()
     {
+        // Идущую запись останавливаем до разрушения окон: иначе микрофон остался бы открытым, а текст — недоставленным.
+        _disposing = true;
+        if (_dictation.State == DictationState.Recording)
+        {
+            _ = ObserveAsync(_dictation.HandleAsync(HotkeyAction.Cancel), "Отмена диктовки при выходе");
+        }
+
         _hotkey?.Dispose();
         _hotkey = null;
         _overlay.Dispose();
@@ -273,6 +287,11 @@ internal sealed class DaemonHost : IDisposable
         }
 
         Log.Info($"Горячая клавиша: {action}");
+        if (action == HotkeyAction.StartRecording && _dictation.State == DictationState.Idle)
+        {
+            _dictationTarget = Native.GetForegroundWindow(); // «Вставить последнее» целится в окно, где диктовали
+        }
+
         _ = ObserveAsync(_dictation.HandleAsync(action), "Диктовка");
     }
 
@@ -295,7 +314,7 @@ internal sealed class DaemonHost : IDisposable
         {
             case Native.WM_LBUTTONUP:
                 // Щелчок по значку — путь восстановления для пользователя, если система сняла хук.
-                TryReinstallHotkey("щелчок по значку");
+                TryReinstallHotkey("щелчок по значку", cancelRecording: true);
                 break;
             case Native.WM_LBUTTONDBLCLK:
                 OpenSettings();
@@ -459,12 +478,18 @@ internal sealed class DaemonHost : IDisposable
 
     // Windows молча снимает WH_KEYBOARD_LL после тайм-аута колбэка. Таймеров в простое нет (§1/§11):
     // хук переустанавливается только по событиям (разблокировка, выход из сна, щелчок по значку), и только в простое.
-    private void TryReinstallHotkey(string reason)
+    private void TryReinstallHotkey(string reason, bool cancelRecording = false)
     {
         if (_dictation.State != DictationState.Idle)
         {
-            // Не рвём идущую диктовку: переустановка выполнится по её окончании (OnSessionEnded).
+            // Хук мог быть снят системой посреди удержания — клавиша отпущена «в пустоту», а запись идёт.
+            // Явное действие пользователя (щелчок по значку) или выход из сна отменяет запись; иначе ждём конца сессии.
             _pendingReinstall = reason;
+            if (cancelRecording && _dictation.State == DictationState.Recording && !_cancelInFlight)
+            {
+                _ = CancelThenReconcileAsync();
+            }
+
             return;
         }
 
@@ -485,13 +510,54 @@ internal sealed class DaemonHost : IDisposable
 
     private void OnSessionEnded()
     {
+        if (_disposing)
+        {
+            return;
+        }
+
         ScheduleTrim(TimeSpan.FromSeconds(2));
+        ApplyPendingHotkeyChanges();
+    }
+
+    private void ApplyPendingHotkeyChanges()
+    {
         if (_pendingReinstall is { } reason)
         {
             TryReinstallHotkey(reason);
         }
 
         ReconcileHotkey();
+    }
+
+    // Таймеры сессии (старт движка, автостоп) не поставились — запись нельзя оставлять без автостопа: сессия отменяется с ошибкой.
+    private void OnSchedulingFailed() => _window.Sync.Post(_ => _ = FailSessionAsync(), null);
+
+    private async Task FailSessionAsync()
+    {
+        if (_failingSession || _dictation.State != DictationState.Recording)
+        {
+            return;
+        }
+
+        _failingSession = true;
+        try
+        {
+            await _dictation.HandleAsync(HotkeyAction.Cancel);
+            _overlay.ShowMessage("Не удалось запустить запись — подробности в журнале", OverlayTone.Error);
+            UpdateTray(TrayState.Error);
+            if (_settings.SoundsEnabled)
+            {
+                SoundPlayer.Play(SoundKind.Error);
+            }
+        }
+        catch (Exception e)
+        {
+            Log.Error("Отмена сессии после сбоя таймера", e);
+        }
+        finally
+        {
+            _failingSession = false;
+        }
     }
 
     // Хук пропускает все клавиши, пока демон приостановлен из трея или окно настроек записывает новую комбинацию.
@@ -563,9 +629,9 @@ internal sealed class DaemonHost : IDisposable
         }
 
         // Путь сбоя микрофона не вызывает SessionEnded, поэтому применяем и здесь (повторный вызов безвреден).
-        if (_dictation.State != DictationState.Recording)
+        if (_dictation.State != DictationState.Recording && !_disposing)
         {
-            ReconcileHotkey();
+            ApplyPendingHotkeyChanges();
         }
     }
 
@@ -619,13 +685,21 @@ internal sealed class DaemonHost : IDisposable
     private void ScheduleTrim(TimeSpan delay)
     {
         _trimTimer?.Dispose();
-        _trimTimer = _window.SetTimer(delay, () =>
+        try
         {
-            if (_dictation.State == DictationState.Idle)
+            _trimTimer = _window.SetTimer(delay, () =>
             {
-                MemoryTrimmer.Trim();
-            }
-        });
+                if (_dictation.State == DictationState.Idle)
+                {
+                    MemoryTrimmer.Trim();
+                }
+            });
+        }
+        catch (Win32Exception e)
+        {
+            Log.Error("Таймер сброса памяти", e); // не критично: память вернётся позже
+            _trimTimer = null;
+        }
     }
 
     private void UpdateTray(TrayState state)

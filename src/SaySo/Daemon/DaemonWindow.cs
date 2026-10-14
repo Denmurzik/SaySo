@@ -83,7 +83,8 @@ internal sealed class DaemonWindow : IDisposable
         if (result == 0)
         {
             _timers.Remove(id);
-            Log.Info("SetTimer не удался — таймер не запущен");
+            // Молча «потерянный» таймер оставил бы вызывающего без его обратного вызова — сообщаем исключением.
+            throw new System.ComponentModel.Win32Exception(System.Runtime.InteropServices.Marshal.GetLastPInvokeError(), "SetTimer");
         }
 
         return new TimerHandle(this, id);

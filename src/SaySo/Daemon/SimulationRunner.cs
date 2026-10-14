@@ -75,10 +75,17 @@ internal static class SimulationRunner
         var clock = Stopwatch.StartNew();
         await using var run = pipeline.Begin();
         run.StartPrimary();
+        var chunk = 0;
         for (var i = 0; i < pcm.Length; i += AudioFormat.ChunkBytes)
         {
             run.PushAudio(pcm.AsSpan(i, Math.Min(AudioFormat.ChunkBytes, pcm.Length - i)));
-            await Task.Delay(AudioFormat.ChunkMilliseconds);
+            // Темп по абсолютному дедлайну, а не фиксированной паузе: погрешность таймера не накапливается.
+            var wait = (chunk + 1) * (long)AudioFormat.ChunkMilliseconds - clock.ElapsedMilliseconds;
+            chunk++;
+            if (wait > 0)
+            {
+                await Task.Delay((int)wait);
+            }
         }
 
         var audioEnd = clock.ElapsedMilliseconds;
@@ -134,6 +141,16 @@ internal static class SimulationRunner
             w.WriteEndObject();
         }
 
-        File.WriteAllBytes(outPath ?? "sayso-simulate.json", buffer.WrittenSpan.ToArray());
+        try
+        {
+            var path = Path.GetFullPath(outPath ?? "sayso-simulate.json");
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            File.WriteAllBytes(path, buffer.WrittenSpan.ToArray());
+        }
+        catch (Exception e)
+        {
+            // Результат уже получен: недоступный --out не должен менять код возврата и ронять процесс.
+            Log.Error("Запись результата симуляции", e);
+        }
     }
 }
