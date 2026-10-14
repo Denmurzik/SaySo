@@ -12,6 +12,9 @@ public class OverlayMessagesTests
     [Fact]
     public void EveryOverlayString_FitsInOverlayWidth()
     {
+        // Без шрифта плашки GDI подставит другой (Windows 10, серверные раннеры CI): тест измерял бы не тот шрифт.
+        Assert.SkipUnless(GdiTextMask.IsTextFontAvailable(),
+            $"Шрифт «Segoe UI Variable Text» не установлен (GDI подставил «{GdiTextMask.ResolvedTextFace()}»): ширины строк оверлея не измерить.");
         var tooWide = new List<string>();
         var checkedStrings = 0;
         foreach (var text in OverlayMessages.All().Distinct())
@@ -45,6 +48,38 @@ public class OverlayMessagesTests
             Assert.False(text.EndsWith('.'), "точка в конце: " + text);
             Assert.Matches("[А-Яа-я]", text);
         }
+    }
+
+    [Fact]
+    public void ResolvedFace_ForMissingFont_IsASubstitute_SoAbsenceIsDetectable()
+    {
+        const string Missing = "Несуществующий шрифт SaySo 12345";
+
+        var face = GdiTextMask.ResolvedTextFace(Missing);
+
+        Assert.False(string.IsNullOrWhiteSpace(face));
+        Assert.False(face.StartsWith(Missing, StringComparison.OrdinalIgnoreCase)); // GDI подставил другой шрифт
+    }
+
+    [Fact]
+    public void ResolvedTextFace_IsReported() => Assert.False(string.IsNullOrWhiteSpace(GdiTextMask.ResolvedTextFace()));
+
+    [Theory]
+    [InlineData(InsertOutcome.NoTarget, OverlayMessages.FocusNotRestored)]
+    [InlineData(InsertOutcome.ClipboardUnavailable, OverlayMessages.ClipboardBusyRetry)]
+    [InlineData(InsertOutcome.BlockedByElevation, "Админ-окно: текст в буфере, вставьте Ctrl+V")]
+    [InlineData(InsertOutcome.InputBlocked, "Не вставилось — текст в буфере, нажмите Ctrl+V")]
+    [InlineData(InsertOutcome.Inserted, null)]
+    public void MenuInsertOutcome_UsesItsOwnWordingWhereHistoryTextIsInvolved(InsertOutcome outcome, string? expected) =>
+        Assert.Equal(expected, OverlayMessages.ForMenuInsertOutcome(outcome));
+
+    [Fact]
+    public void MenuStrings_AreInTheWidthCatalog()
+    {
+        var all = OverlayMessages.All().ToList();
+
+        Assert.Contains(OverlayMessages.ClipboardBusyRetry, all);
+        Assert.Contains(OverlayMessages.FocusNotRestored, all);
     }
 
     [Fact]

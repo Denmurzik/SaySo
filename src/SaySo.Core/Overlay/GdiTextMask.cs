@@ -38,6 +38,49 @@ public static unsafe class GdiTextMask
         });
     }
 
+    /// <summary>
+    /// Имя шрифта, который GDI реально выберет для текста плашки. Если «Segoe UI Variable Text» не установлен (Windows 10,
+    /// серверные раннеры CI), GDI подставляет другой шрифт — тогда ширины строк отличаются от рассчитанных.
+    /// Пустая строка — сбой GDI.
+    /// </summary>
+    internal static string ResolvedTextFace(string face = TextFont)
+    {
+        var dc = Native.CreateCompatibleDC(0);
+        if (dc == 0)
+        {
+            return "";
+        }
+
+        try
+        {
+            var font = Native.CreateFontW(-13, 0, 0, 0, Native.FW_SEMIBOLD, 0, 0, 0, 1, 0, 0, Native.ANTIALIASED_QUALITY, 0, face);
+            if (font == 0)
+            {
+                return "";
+            }
+
+            var old = Native.SelectObject(dc, font);
+            try
+            {
+                var buffer = stackalloc char[64];
+                var length = Native.GetTextFaceW(dc, 64, buffer);
+                return length > 1 ? new string(buffer, 0, length - 1) : ""; // length включает завершающий ноль
+            }
+            finally
+            {
+                Native.SelectObject(dc, old);
+                Native.DeleteObject(font);
+            }
+        }
+        finally
+        {
+            Native.DeleteDC(dc);
+        }
+    }
+
+    /// <summary>Установлен ли шрифт плашки (GDI не подставил другой).</summary>
+    internal static bool IsTextFontAvailable() => ResolvedTextFace().StartsWith(TextFont, StringComparison.OrdinalIgnoreCase);
+
     public static TextMask RenderGlyph(char glyph, string fontFace, int sizePx)
     {
         return Render(fontFace, sizePx, Native.FW_NORMAL, _ => (sizePx, sizePx), (dc, w, h) =>

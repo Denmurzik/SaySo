@@ -86,6 +86,9 @@ internal static unsafe partial class Native
         uint italic, uint underline, uint strikeOut, uint charSet, uint outPrecision, uint clipPrecision,
         uint quality, uint pitchAndFamily, string faceName);
 
+    [LibraryImport("gdi32.dll", StringMarshalling = StringMarshalling.Utf16)]
+    public static partial int GetTextFaceW(nint hdc, int count, char* faceName);
+
     [LibraryImport("gdi32.dll")]
     public static partial uint SetTextColor(nint hdc, uint color);
 

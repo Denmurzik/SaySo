@@ -409,7 +409,7 @@ internal sealed class DaemonHost : IDisposable
     // Пункты меню трея сообщают о неудаче теми же строками оверлея, что и диктовка; иначе щелчок «ничего не делает».
     private void ShowMenuActionProblem(InsertOutcome outcome)
     {
-        if (OverlayMessages.ForInsertOutcome(outcome) is { } text && _dictation.State == DictationState.Idle)
+        if (OverlayMessages.ForMenuInsertOutcome(outcome) is { } text && _dictation.State == DictationState.Idle)
         {
             _overlay.ShowMessage(text, OverlayTone.Error);
         }

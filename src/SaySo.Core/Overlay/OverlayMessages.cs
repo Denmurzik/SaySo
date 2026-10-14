@@ -27,6 +27,12 @@ public static class OverlayMessages
     public const string StartFailed = "Не удалось начать запись — подробности в журнале";
     public const string DictationError = "Ошибка диктовки — подробности в журнале";
 
+    /// <summary>«Скопировать последнее» / «Вставить последнее» при занятом буфере: текст и так в истории, поможет повтор.</summary>
+    public const string ClipboardBusyRetry = "Буфер обмена занят — попробуйте ещё раз";
+
+    /// <summary>«Вставить последнее»: окно, куда вставляли, не получило фокус (или закрыто).</summary>
+    public const string FocusNotRestored = "Не удалось вернуться в окно — текст в истории";
+
     private const string NoFallbackSuffix = "; резерв не настроен";
     private const string BothUnavailable = "Gemini и Groq недоступны — подробности в трее";
 
@@ -49,6 +55,17 @@ public static class OverlayMessages
         InsertOutcome.NoTarget => "Нет активного окна — текст в истории",
         InsertOutcome.InputBlocked => "Не вставилось — текст в буфере, нажмите Ctrl+V",
         _ => null,
+    };
+
+    /// <summary>
+    /// То же для пункта меню трея «Вставить последнее»: текст берётся из истории, поэтому «окна нет» означает, что фокус
+    /// не вернулся, а занятый буфер лечится повтором. null — вставка удалась.
+    /// </summary>
+    public static string? ForMenuInsertOutcome(InsertOutcome outcome) => outcome switch
+    {
+        InsertOutcome.NoTarget => FocusNotRestored,
+        InsertOutcome.ClipboardUnavailable => ClipboardBusyRetry,
+        _ => ForInsertOutcome(outcome),
     };
 
     /// <summary>Текст вставил резерв: сообщаем, почему не основной движок.</summary>
@@ -95,6 +112,11 @@ public static class OverlayMessages
             if (ForInsertOutcome(outcome) is { } text)
             {
                 yield return FailureText.Same(text);
+            }
+
+            if (ForMenuInsertOutcome(outcome) is { } menuText)
+            {
+                yield return FailureText.Same(menuText);
             }
         }
 
