@@ -351,4 +351,23 @@ public class GeminiLiveSessionTests
         Assert.Equal(EngineErrorKind.QuotaExceeded, ex.Kind);
         Assert.Equal(2, transports.Count); // когда все ключи на паузе — без обращения к сети
     }
+
+    [Fact]
+    public void Engine_AllKeysInvalid_ThrowsAuthFailedNotQuota()
+    {
+        var ring = new GeminiKeyRing(new ManualTimeProvider());
+        ring.SetKeys(["key-1"]);
+        ring.ReportFailure("key-1", EngineErrorKind.AuthFailed);
+        var transports = 0;
+        var engine = new GeminiLiveEngine(() =>
+        {
+            transports++;
+            return new FakeWebSocketTransport();
+        }, ring, _ => Conn(), Fast);
+
+        var ex = Assert.Throws<TranscriptionException>(() => engine.StartSession());
+
+        Assert.Equal(EngineErrorKind.AuthFailed, ex.Kind); // «ключ недействителен», а не «лимит исчерпан»
+        Assert.Equal(0, transports);
+    }
 }

@@ -37,6 +37,7 @@ internal sealed class DaemonHost : IDisposable
     private bool _ipcSuspended;
     private readonly OverlayWindow _overlay;
     private readonly HttpClient _http = SettingsDictationEngines.CreateHttpClient();
+    private readonly SettingsDictationEngines _engines;
     private readonly DictationCoordinator _dictation;
     private IDisposable? _trimTimer;
 
@@ -69,10 +70,10 @@ internal sealed class DaemonHost : IDisposable
         _tray = new TrayIcon(_window.Handle, DaemonWindow.TrayMessage);
 
         // Контекст синхронизации главного потока уже установлен выше: продолжения HandleAsync возвращаются на этот поток.
-        var engines = new SettingsDictationEngines(() => _settings, _secretStore.Load, _http, () => new ClientWebSocketTransport());
+        _engines = new SettingsDictationEngines(() => _settings, _secretStore.Load, _http, () => new ClientWebSocketTransport());
         _overlay = new OverlayWindow(() => _dictation?.CurrentLevel ?? 0f);
         _dictation = new DictationCoordinator(
-            new DictationPipeline(engines),
+            new DictationPipeline(_engines),
             (onData, onError) => new WasapiAudioSource(_settings.MicrophoneDeviceId, _settings.MicrophoneDeviceName, onData, onError),
             _overlay,
             new InserterOutput(_inserter, () => _dictationTarget = _pressTarget),
@@ -404,6 +405,7 @@ internal sealed class DaemonHost : IDisposable
         {
             case IpcProtocol.ReloadSettings:
                 _settings = _settingsStore.Load();
+                _engines.ResetKeyPauses(); // настройки изменены пользователем: ключ мог быть исправлен, а VPN включён
                 _ipcSuspended = false; // окно настроек закончило запись комбинации (или умерло, не прислав Resume)
                 if (_hotkey is null)
                 {

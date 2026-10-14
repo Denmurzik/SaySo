@@ -22,8 +22,8 @@ public interface IStreamingSession : IAsyncDisposable
 public interface IStreamingEngine
 {
     /// <summary>
-    /// Создаёт и запускает сессию. Без ключа — TranscriptionException(NotConfigured);
-    /// все ключи на паузе — TranscriptionException(QuotaExceeded), без обращения к сети.
+    /// Создаёт и запускает сессию. Без ключа — TranscriptionException(NotConfigured); все ключи на паузе —
+    /// TranscriptionException с причиной паузы (QuotaExceeded или AuthFailed), без обращения к сети.
     /// </summary>
     IStreamingSession StartSession();
 }

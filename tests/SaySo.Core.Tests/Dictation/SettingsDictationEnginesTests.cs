@@ -68,6 +68,24 @@ public class SettingsDictationEnginesTests
         Assert.Equal("key-2", _transports[1].Headers!["x-goog-api-key"]);
     }
 
+    [Fact]
+    public async Task ResetKeyPauses_FreesKeysPausedByQuota()
+    {
+        var engines = Create(new AppSettings(), new Secrets { GeminiApiKeys = ["key-1"] });
+        var failing = engines.Primary!.StartSession();
+        await WaitConnected(0);
+        _transports[0].ServerCloses(1011, "You exceeded your current quota");
+        await Assert.ThrowsAsync<TranscriptionException>(() => failing.CompleteAsync(TestContext.Current.CancellationToken).WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken));
+        await failing.DisposeAsync();
+        Assert.Equal(EngineErrorKind.QuotaExceeded, Assert.Throws<TranscriptionException>(() => engines.Primary!.StartSession()).Kind);
+
+        engines.ResetKeyPauses(); // пользователь изменил настройки
+
+        await using var next = engines.Primary!.StartSession();
+        await WaitConnected(1);
+        Assert.Equal("key-1", _transports[1].Headers!["x-goog-api-key"]);
+    }
+
     private async Task WaitConnected(int index)
     {
         for (var i = 0; i < 200 && (_transports.Count <= index || _transports[index].Headers is null); i++)

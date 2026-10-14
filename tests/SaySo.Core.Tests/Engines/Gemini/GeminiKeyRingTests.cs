@@ -89,4 +89,50 @@ public class GeminiKeyRingTests
         Assert.Equal(3, ring.NumberOf("d"));
         Assert.Equal(0, ring.NumberOf("c"));
     }
+
+    [Fact]
+    public void AllPaused_ReportsReasonOfPause()
+    {
+        var quota = Ring("a", "b");
+        quota.ReportFailure("a", EngineErrorKind.QuotaExceeded);
+        quota.ReportFailure("b", EngineErrorKind.QuotaExceeded);
+        Assert.Null(quota.Acquire(out var quotaReason));
+        Assert.Equal(EngineErrorKind.QuotaExceeded, quotaReason);
+
+        var invalid = Ring("a");
+        invalid.ReportFailure("a", EngineErrorKind.AuthFailed);
+        Assert.Null(invalid.Acquire(out var invalidReason));
+        Assert.Equal(EngineErrorKind.AuthFailed, invalidReason);
+    }
+
+    [Fact]
+    public void AllPaused_MixedReasons_ReportsTheOneThatEndsFirst()
+    {
+        var ring = Ring("a", "b");
+        ring.ReportFailure("a", EngineErrorKind.AuthFailed); // час
+        ring.ReportFailure("b", EngineErrorKind.QuotaExceeded); // 5 минут — освободится раньше
+
+        Assert.Null(ring.Acquire(out var reason));
+        Assert.Equal(EngineErrorKind.QuotaExceeded, reason);
+    }
+
+    [Fact]
+    public void NoKeys_ReasonIsNotConfigured()
+    {
+        Assert.Null(Ring().Acquire(out var reason));
+        Assert.Equal(EngineErrorKind.NotConfigured, reason);
+    }
+
+    [Fact]
+    public void ResetPauses_FreesAllKeys()
+    {
+        var ring = Ring("a", "b");
+        ring.ReportFailure("a", EngineErrorKind.AuthFailed);
+        ring.ReportFailure("b", EngineErrorKind.QuotaExceeded);
+        Assert.Null(ring.Acquire());
+
+        ring.ResetPauses();
+
+        Assert.Equal("a", ring.Acquire());
+    }
 }

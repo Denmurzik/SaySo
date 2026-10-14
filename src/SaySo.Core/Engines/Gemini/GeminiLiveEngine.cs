@@ -16,8 +16,10 @@ public sealed class GeminiLiveEngine(
             throw new TranscriptionException(EngineErrorKind.NotConfigured, "Не задан ключ Gemini.");
         }
 
-        var key = keys.Acquire()
-            ?? throw new TranscriptionException(EngineErrorKind.QuotaExceeded, "Все ключи Gemini временно на паузе (лимит или недействительный ключ).");
+        var key = keys.Acquire(out var pausedReason)
+            ?? throw new TranscriptionException(pausedReason, pausedReason == EngineErrorKind.AuthFailed
+                ? "Все ключи Gemini на паузе: недействительный ключ."
+                : "Все ключи Gemini на паузе: исчерпан лимит запросов.");
         var session = new GeminiLiveSession(transportFactory(), connectionForKey(key), timings);
         session.Failed += e =>
         {

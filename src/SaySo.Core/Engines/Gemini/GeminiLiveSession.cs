@@ -7,6 +7,26 @@ namespace SaySo.Core.Engines.Gemini;
 /// <summary>Параметры подключения. Способ передачи ключа задан здесь — единственное место для его смены.</summary>
 public sealed record GeminiConnection(Uri Endpoint, string ApiKey, GeminiSessionOptions Options)
 {
+    /// <summary>
+    /// Подключение по адресу из настроек. Неверный адрес (его можно вписать в settings.json руками) —
+    /// <see cref="TranscriptionException"/> с <see cref="EngineErrorKind.InvalidEndpoint"/>, а не <see cref="UriFormatException"/>.
+    /// </summary>
+    public static GeminiConnection Create(string endpoint, string apiKey, GeminiSessionOptions options) =>
+        new(ParseEndpoint(endpoint), apiKey, options);
+
+    /// <summary>Проверяет адрес WebSocket (абсолютный ws/wss); иначе <see cref="TranscriptionException"/> InvalidEndpoint.</summary>
+    public static Uri ParseEndpoint(string endpoint) =>
+        Uri.TryCreate(endpoint, UriKind.Absolute, out var uri) && uri.Scheme is "wss" or "ws"
+            ? uri
+            : throw new TranscriptionException(EngineErrorKind.InvalidEndpoint, "Неверный адрес сервера Gemini в настройках.");
+
+    // Запись по умолчанию печатает все свойства, включая ApiKey: ToString() попадал бы в логи и исключения с открытым ключом.
+    private bool PrintMembers(System.Text.StringBuilder builder)
+    {
+        builder.Append("Endpoint = ").Append(Endpoint).Append(", ApiKey = ***, Options = ").Append(Options);
+        return true;
+    }
+
     /// <summary>Адрес WebSocket (ключ в него не входит).</summary>
     public Uri ConnectUri => Endpoint;
 

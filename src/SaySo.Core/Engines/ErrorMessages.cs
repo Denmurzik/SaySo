@@ -13,6 +13,7 @@ public static class ErrorMessages
         EngineErrorKind.Timeout => $"{engine}: сервер не ответил вовремя",
         EngineErrorKind.Protocol => $"{engine}: ошибка протокола",
         EngineErrorKind.NotConfigured => $"{engine}: не задан ключ API",
+        EngineErrorKind.InvalidEndpoint => $"{engine}: неверный адрес сервера",
         _ => $"{engine}: неизвестная ошибка",
     };
 
@@ -26,6 +27,7 @@ public static class ErrorMessages
         EngineErrorKind.AuthFailed => $"{engine}: ключ недействителен",
         EngineErrorKind.RegionBlocked => $"{engine}: недоступен без VPN",
         EngineErrorKind.Timeout => $"{engine}: нет ответа",
+        EngineErrorKind.InvalidEndpoint => $"{engine}: неверный адрес",
         _ => Describe(kind, engine),
     };
 }

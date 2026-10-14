@@ -13,10 +13,18 @@ public sealed class GroqClient(HttpClient http, string baseUrl, string apiKey)
     /// <summary>~224 токена Whisper с запасом для кириллицы.</summary>
     public const int MaxPromptChars = 400;
 
-    private static readonly TimeSpan TranscribeTimeout = TimeSpan.FromSeconds(30);
+    private const int TranscribeBaseSeconds = 30;
+    private const int TranscribeBytesPerExtraSecond = 512 * 1024;
     private static readonly TimeSpan CleanupTimeout = TimeSpan.FromSeconds(15);
     private static readonly JsonWriterOptions WriterOptions = new() { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
     private readonly string _base = baseUrl.TrimEnd('/');
+
+    /// <summary>
+    /// Таймаут распознавания растёт с размером записи: 30 с и ещё 1 с на каждые 0,5 МБ WAV
+    /// (десятиминутная запись ≈ 19 МБ получает ≈ 67 с — на медленном канале через VPN 30 с на загрузку не хватило бы).
+    /// </summary>
+    public static TimeSpan TranscribeTimeoutFor(long wavBytes) =>
+        TimeSpan.FromSeconds(TranscribeBaseSeconds + Math.Max(0, wavBytes) / TranscribeBytesPerExtraSecond);
 
     public static string? ToWhisperLanguage(IReadOnlyList<string> languageCodes) =>
         languageCodes.Count == 1 ? languageCodes[0].Split('-')[0].ToLowerInvariant() : null;
@@ -62,8 +70,8 @@ public sealed class GroqClient(HttpClient http, string baseUrl, string apiKey)
             form.Add(new StringContent(prompt), "prompt");
         }
 
-        using var request = new HttpRequestMessage(HttpMethod.Post, _base + "/audio/transcriptions") { Content = form };
-        using var doc = await SendAsync(request, TranscribeTimeout, ct).ConfigureAwait(false);
+        using var request = new HttpRequestMessage(HttpMethod.Post, Endpoint("/audio/transcriptions")) { Content = form };
+        using var doc = await SendAsync(request, TranscribeTimeoutFor(wav.Length), ct).ConfigureAwait(false);
         return doc.RootElement.TryGetProperty("text", out var text) && text.ValueKind == JsonValueKind.String
             ? text.GetString()!.Trim()
             : throw new TranscriptionException(EngineErrorKind.Protocol, "Groq: в ответе нет поля text.");
@@ -89,7 +97,7 @@ public sealed class GroqClient(HttpClient http, string baseUrl, string apiKey)
             w.WriteEndObject();
         }
 
-        using var request = new HttpRequestMessage(HttpMethod.Post, _base + "/chat/completions")
+        using var request = new HttpRequestMessage(HttpMethod.Post, Endpoint("/chat/completions"))
         {
             Content = new ByteArrayContent(buffer.WrittenSpan.ToArray())
             {
@@ -121,9 +129,15 @@ public sealed class GroqClient(HttpClient http, string baseUrl, string apiKey)
 
     public async Task ValidateKeyAsync(CancellationToken ct)
     {
-        using var request = new HttpRequestMessage(HttpMethod.Get, _base + "/models");
+        using var request = new HttpRequestMessage(HttpMethod.Get, Endpoint("/models"));
         using var _ = await SendAsync(request, TimeSpan.FromSeconds(10), ct).ConfigureAwait(false);
     }
+
+    // Адрес из settings.json мог быть вписан неверно: UriFormatException/InvalidOperationException наружу не выпускаем.
+    private Uri Endpoint(string path) =>
+        Uri.TryCreate(_base + path, UriKind.Absolute, out var uri) && uri.Scheme is "http" or "https"
+            ? uri
+            : throw new TranscriptionException(EngineErrorKind.InvalidEndpoint, "Неверный адрес сервера Groq в настройках.");
 
     private static void WriteMessage(Utf8JsonWriter w, string role, string content)
     {
