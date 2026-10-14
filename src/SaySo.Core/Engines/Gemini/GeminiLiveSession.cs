@@ -14,9 +14,12 @@ public sealed record GeminiConnection(Uri Endpoint, string ApiKey, GeminiSession
     public static GeminiConnection Create(string endpoint, string apiKey, GeminiSessionOptions options) =>
         new(ParseEndpoint(endpoint), apiKey, options);
 
-    /// <summary>Проверяет адрес WebSocket (абсолютный ws/wss); иначе <see cref="TranscriptionException"/> InvalidEndpoint.</summary>
+    /// <summary>
+    /// Проверяет адрес WebSocket: абсолютный и только <c>wss</c> (ключ идёт в заголовке, по <c>ws</c> он ушёл бы открытым текстом);
+    /// иначе <see cref="TranscriptionException"/> InvalidEndpoint.
+    /// </summary>
     public static Uri ParseEndpoint(string endpoint) =>
-        Uri.TryCreate(endpoint, UriKind.Absolute, out var uri) && uri.Scheme is "wss" or "ws"
+        Uri.TryCreate(endpoint, UriKind.Absolute, out var uri) && uri.Scheme == "wss"
             ? uri
             : throw new TranscriptionException(EngineErrorKind.InvalidEndpoint, "Неверный адрес сервера Gemini в настройках.");
 

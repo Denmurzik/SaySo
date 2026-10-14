@@ -135,7 +135,7 @@ public sealed class GroqClient(HttpClient http, string baseUrl, string apiKey)
 
     // Адрес из settings.json мог быть вписан неверно: UriFormatException/InvalidOperationException наружу не выпускаем.
     private Uri Endpoint(string path) =>
-        Uri.TryCreate(_base + path, UriKind.Absolute, out var uri) && uri.Scheme is "http" or "https"
+        Uri.TryCreate(_base + path, UriKind.Absolute, out var uri) && uri.Scheme == "https" // ключ в Authorization — только по TLS
             ? uri
             : throw new TranscriptionException(EngineErrorKind.InvalidEndpoint, "Неверный адрес сервера Groq в настройках.");
 

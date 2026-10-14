@@ -19,6 +19,7 @@ public class InvalidEndpointTests
     [InlineData("не адрес")]
     [InlineData("generativelanguage.googleapis.com/ws")]
     [InlineData("https://example.test/ws")]
+    [InlineData("ws://example.test/ws")] // ключ ушёл бы открытым текстом
     [InlineData("")]
     public void GeminiConnection_BadEndpoint_ThrowsInvalidEndpoint(string endpoint)
     {
@@ -72,6 +73,7 @@ public class InvalidEndpointTests
     [InlineData("не адрес")]
     [InlineData("/openai/v1")]
     [InlineData("ftp://example.test/v1")]
+    [InlineData("http://api.groq.test/openai/v1")] // ключ ушёл бы открытым текстом
     public async Task Groq_BadBaseUrl_ThrowsInvalidEndpoint_ForEveryCall(string baseUrl)
     {
         var client = new GroqClient(new HttpClient(new FakeHttpHandler()), baseUrl, "gsk_TEST");
