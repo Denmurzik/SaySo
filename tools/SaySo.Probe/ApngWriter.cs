@@ -9,6 +9,22 @@ internal static class ApngWriter
 {
     private static readonly uint[] CrcTable = BuildCrcTable();
 
+    /// <summary>Обычный (неанимированный) PNG RGBA 8 бит из одного кадра BGRA с предумноженной альфой.</summary>
+    public static void WriteStill(string path, int width, int height, uint[] pixels)
+    {
+        using var fs = File.Create(path);
+        fs.Write([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]);
+
+        var ihdr = new byte[13];
+        BinaryPrimitives.WriteInt32BigEndian(ihdr, width);
+        BinaryPrimitives.WriteInt32BigEndian(ihdr.AsSpan(4), height);
+        ihdr[8] = 8; // бит на канал
+        ihdr[9] = 6; // RGBA
+        Chunk(fs, "IHDR", ihdr);
+        Chunk(fs, "IDAT", Compress(pixels, width, height));
+        Chunk(fs, "IEND", []);
+    }
+
     /// <param name="frames">Кадры в формате BGRA с предумноженной альфой (как у OverlayRenderer).</param>
     public static void Write(string path, int width, int height, IReadOnlyList<uint[]> frames, int delayMs)
     {

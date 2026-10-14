@@ -240,9 +240,17 @@ static void RenderStates(string dir)
     const float scale = 2f;
     Directory.CreateDirectory(Path.GetFullPath(dir));
 
-    OverlayFrame Message(string text, OverlayTone tone) => new(
-        OverlayMode.Message, [], 0, tone,
-        GdiTextMask.RenderText(text, (int)MathF.Round(13 * scale), (int)MathF.Round(400 * scale))); // как в OverlayWindow.ShowMessage
+    OverlayFrame Message(string text, OverlayTone tone)
+    {
+        var mask = GdiTextMask.RenderText(text, (int)MathF.Round(13 * scale), (int)MathF.Round(400 * scale)); // как в OverlayWindow.ShowMessage
+        if (mask.Width == 0 || mask.Height == 0)
+        {
+            // GdiTextMask при сбое GDI молча возвращает пустую маску — на картинке была бы пилюля без текста.
+            throw new InvalidOperationException($"GDI не отрисовал текст «{text}» (пустая маска).");
+        }
+
+        return new OverlayFrame(OverlayMode.Message, [], 0, tone, mask);
+    }
 
     var frames = new (string File, OverlayFrame Frame)[]
     {
@@ -258,7 +266,7 @@ static void RenderStates(string dir)
         var px = new uint[w * h];
         OverlayRenderer.Render(px, w, h, frame, scale);
         var path = Path.Combine(dir, file);
-        ApngWriter.Write(path, w, h, [px], 33);
+        ApngWriter.WriteStill(path, w, h, px);
         Console.WriteLine($"OK {path} ({w}×{h})");
     }
 }
