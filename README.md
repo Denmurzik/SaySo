@@ -123,13 +123,13 @@ Measured on Windows 11 (x64), NativeAOT Release build:
 | Process | Private bytes | Working set |
 |---|---|---|
 | Daemon, idle after start | 6.9 MB | 0.2 MB |
-| Daemon, 10 s after a 1.5 s recording (placeholder API keys, recognition did not complete) | 8.8 MB | 0.3 MB |
+| Daemon, 10 s after a 1.5 s recording (placeholder API keys, without a completed recognition) | 8.8 MB | 0.3 MB |
 | Settings window (open, 6 s after launch) | 93.4 MB | 147.5 MB |
 | Settings window (closed) | process exits | process exits |
 
 Publish size: 66.6 MB (`SaySo.exe` is 9.6 MB).
 
-The daemon trims its working set after start and after each session, so its working set stays below 1 MB and *Private bytes* is the more telling column; the settings window is not trimmed. The dictation row has no real recognition request behind it: a real dictation adds network buffers (WebSocket/TLS/HTTP), so expect somewhat more.
+The daemon trims its working set after start and after each session, so its working set stays below 1 MB and *Private bytes* is the more telling column; the settings window is not trimmed. The dictation row was measured without a completed recognition: a real dictation adds network buffers (WebSocket/TLS/HTTP), so expect somewhat more.
 
 ## Build & test
 
