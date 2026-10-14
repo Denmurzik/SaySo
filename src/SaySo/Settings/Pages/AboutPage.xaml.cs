@@ -29,7 +29,7 @@ public sealed partial class AboutPage : UserControl
     {
         try
         {
-            Process.Start(new ProcessStartInfo("explorer.exe", "\"" + _model.Paths.Root + "\"") { UseShellExecute = false });
+            Process.Start(new ProcessStartInfo(ShellPaths.Explorer, "\"" + _model.Paths.Root + "\"") { UseShellExecute = false });
         }
         catch (Exception ex)
         {
@@ -108,14 +108,16 @@ public sealed partial class AboutPage : UserControl
         }
 
         InstallButton.IsEnabled = false;
-        if (IpcClient.Send(IpcProtocol.InstallUpdate))
+        // Повышенный демон только открыл бы страницу релиза, поэтому ему установку не поручаем (и не обещаем её пользователю).
+        if (IpcClient.IsDaemonNotMoreElevatedThanUs() && IpcClient.Send(IpcProtocol.InstallUpdate))
         {
-            // Демон перепроверит релиз, скачает и проверит Setup, дождётся конца диктовки и перезапустится сам.
+            // Демон ставит известную ему версию (иначе сначала проверяет), скачивает и проверяет Setup, дожидается конца
+            // диктовки; перезапустит SaySo сам Setup.
             SetBusy(false, "SaySo скачивает обновление и перезапустится — это займёт около минуты");
             return;
         }
 
-        // Демона нет: ставим сами тем же кодом. Setup закроет это окно и перезапустит SaySo; введённое — сохраняем заранее.
+        // Демона нет или он запущен с правами администратора, а это окно — нет: ставим сами тем же кодом без повышения прав. Setup закроет это окно и перезапустит SaySo; введённое — сохраняем заранее.
         SetBusy(true, "Скачиваю обновление…");
         _model.Flush();
         try

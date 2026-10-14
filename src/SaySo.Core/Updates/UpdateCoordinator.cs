@@ -492,8 +492,8 @@ public sealed class UpdateCoordinator(
                 else
                 {
                     // Коды выхода Inno: 1 не удалось инициализировать, 3 и 4 фатальная ошибка при подготовке и установке, 6 прерван
-                    // принудительно, 7 и 8 перезагрузка не удалась — это сбой установки; 2 и 5 (отмена пользователем), отказ в UAC
-                    // и всё прочее — «отменено».
+                    // принудительно, 7 PrepareToInstall отказал, 8 то же, и ещё требуется перезагрузка — это сбой установки;
+                    // 2 и 5 (отмена пользователем), отказ в UAC и всё прочее — «отменено».
                     installer.Delete();
                     var fatal = run.ExitCode is 1 or 3 or 4 or 6 or 7 or 8;
                     host.ShowMessage(fatal ? OverlayMessages.UpdateInstallFailed : OverlayMessages.UpdateCancelled, isError: fatal);

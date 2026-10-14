@@ -40,6 +40,31 @@ public class IpcTests
     }
 
     [Fact]
+    public void IsDaemonNotMoreElevatedThanUs_WithoutDaemon_IsFalse() =>
+        Assert.False(IpcClient.IsDaemonNotMoreElevatedThanUs("SaySo.Test.NoSuchWindow." + Guid.NewGuid().ToString("N")));
+
+    [Fact]
+    public void IsDaemonNotMoreElevatedThanUs_ForAWindowOfOurOwnProcess_IsTrue()
+    {
+        var cls = "SaySo.Test.Ipc." + Guid.NewGuid().ToString("N");
+        var result = false;
+        WindowAndSyncTests.OnLoopThread(() =>
+        {
+            using var window = new MessageWindow(cls, (_, _, _) => null, messageOnly: false);
+            result = IpcClient.IsDaemonNotMoreElevatedThanUs(cls);
+        });
+        Assert.True(result);
+    }
+
+    [Fact]
+    public void ShellPaths_Explorer_IsTheFullWindowsPath()
+    {
+        Assert.True(Path.IsPathFullyQualified(ShellPaths.Explorer));
+        Assert.Equal("explorer.exe", Path.GetFileName(ShellPaths.Explorer));
+        Assert.True(File.Exists(ShellPaths.Explorer));
+    }
+
+    [Fact]
     public void Protocol_MessagesAreDistinct() =>
         Assert.Equal(IpcProtocol.AllMessages.Length, IpcProtocol.AllMessages.Distinct().Count());
 }

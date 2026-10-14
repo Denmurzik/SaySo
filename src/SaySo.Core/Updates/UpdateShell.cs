@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using SaySo.Core.Diagnostics;
 using SaySo.Core.Input;
+using SaySo.Core.Platform;
 
 namespace SaySo.Core.Updates;
 
@@ -66,7 +67,7 @@ public static class UpdateShell
 
     /// <summary>
     /// Открывает страницу релиза в браузере; только адреса из белого списка (<see cref="UpdateUrls"/>). Из процесса с правами
-    /// администратора — через <c>explorer.exe</c>: браузер запускается без повышения (как демон в <c>AdminModeSwitcher</c>).
+    /// администратора — через <c>%WINDIR%\explorer.exe</c>: браузер запускается без повышения (как демон в <c>AdminModeSwitcher</c>).
     /// </summary>
     /// <returns>false — адрес не из белого списка или оболочка не смогла открыть его.</returns>
     public static bool OpenUrl(string url)
@@ -80,7 +81,7 @@ public static class UpdateShell
         try
         {
             var info = ProcessIntegrity.IsElevated
-                ? new ProcessStartInfo("explorer.exe", "\"" + address + "\"") { UseShellExecute = false }
+                ? new ProcessStartInfo(ShellPaths.Explorer, "\"" + address + "\"") { UseShellExecute = false }
                 : new ProcessStartInfo(address) { UseShellExecute = true };
             Process.Start(info)?.Dispose();
             return true;

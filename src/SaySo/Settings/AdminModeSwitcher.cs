@@ -76,7 +76,7 @@ internal static class AdminModeSwitcher
         else
         {
             // Через Проводник — чтобы демон запустился без прав администратора, даже если окно настроек элевировано.
-            using var explorer = Process.Start(new ProcessStartInfo("explorer.exe", "\"" + exe + "\"") { UseShellExecute = false });
+            using var explorer = Process.Start(new ProcessStartInfo(ShellPaths.Explorer, "\"" + exe + "\"") { UseShellExecute = false });
         }
 
         return null;
