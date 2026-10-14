@@ -109,6 +109,7 @@ internal sealed unsafe class LowLevelKeyboardHook : IDisposable
         finally
         {
             Native.UnhookWindowsHookEx(hook);
+            Interlocked.CompareExchange(ref s_current, null, this);
         }
     }
 
