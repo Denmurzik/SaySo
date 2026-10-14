@@ -5,7 +5,11 @@ namespace SaySo.Core.Interop;
 internal static unsafe partial class Native
 {
     public const uint NIM_ADD = 0, NIM_MODIFY = 1, NIM_DELETE = 2, NIM_SETVERSION = 4;
-    public const uint NIF_MESSAGE = 0x1, NIF_ICON = 0x2, NIF_TIP = 0x4, NIF_SHOWTIP = 0x80;
+    public const uint NIF_MESSAGE = 0x1, NIF_ICON = 0x2, NIF_TIP = 0x4, NIF_INFO = 0x10, NIF_SHOWTIP = 0x80;
+    public const uint NIIF_INFO = 0x1, NIIF_RESPECT_QUIET_TIME = 0x80;
+
+    // События всплывающего уведомления (LOWORD(lParam) в режиме NOTIFYICON_VERSION_4).
+    public const uint NIN_BALLOONHIDE = WM_USER + 3, NIN_BALLOONTIMEOUT = WM_USER + 4, NIN_BALLOONUSERCLICK = WM_USER + 5;
     public const uint NOTIFYICON_VERSION_4 = 4;
     public const uint MF_STRING = 0x0, MF_GRAYED = 0x1, MF_CHECKED = 0x8, MF_SEPARATOR = 0x800;
     public const uint TPM_RIGHTBUTTON = 0x2, TPM_NONOTIFY = 0x80, TPM_RETURNCMD = 0x100;

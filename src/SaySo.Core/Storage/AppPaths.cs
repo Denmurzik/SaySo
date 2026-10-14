@@ -20,5 +20,7 @@ public sealed class AppPaths
 
     public string HistoryFile => Path.Combine(Root, "history.bin");
 
+    public string UpdateStateFile => Path.Combine(Root, "update-state.json");
+
     public void EnsureRoot() => Directory.CreateDirectory(Root);
 }

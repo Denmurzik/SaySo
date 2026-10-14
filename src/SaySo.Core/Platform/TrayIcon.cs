@@ -65,6 +65,26 @@ internal sealed unsafe class TrayIcon(
         StopRetries();
     }
 
+    /// <summary>
+    /// Всплывающее уведомление у значка (NIF_INFO). События — NIN_BALLOONUSERCLICK / NIN_BALLOONTIMEOUT в <c>TrayEvent</c>.
+    /// NIIF_RESPECT_QUIET_TIME: в режиме «Не беспокоить» Windows уведомление не показывает.
+    /// </summary>
+    /// <returns>false — значка в трее нет (уведомлять некуда).</returns>
+    public bool ShowBalloon(string title, string text)
+    {
+        if (!_added)
+        {
+            return false;
+        }
+
+        var data = Build();
+        data.uFlags |= Native.NIF_INFO;
+        data.dwInfoFlags = Native.NIIF_INFO | Native.NIIF_RESPECT_QUIET_TIME;
+        Fit(title, 64).AsSpan().CopyTo(new Span<char>(data.szInfoTitle, 64));
+        Fit(text, 256).AsSpan().CopyTo(new Span<char>(data.szInfo, 256));
+        return _notify(Native.NIM_MODIFY, &data);
+    }
+
     /// <summary>После перезапуска Проводника значок нужно добавить заново.</summary>
     public void Recreate()
     {
@@ -130,6 +150,9 @@ internal sealed unsafe class TrayIcon(
         _retryTimer = null;
         _retries = 0;
     }
+
+    // Буфер под строку вместе с завершающим нулём: длинный текст обрезается, а не портит соседнее поле структуры.
+    private static string Fit(string text, int capacity) => text.Length < capacity ? text : text[..(capacity - 1)];
 
     private Native.NOTIFYICONDATAW Build()
     {

@@ -1,6 +1,7 @@
 using SaySo.Core.Audio.Wasapi;
 using SaySo.Core.Engines;
 using SaySo.Core.Input;
+using SaySo.Core.Updates;
 
 namespace SaySo.Core.Overlay;
 
@@ -32,6 +33,13 @@ public static class OverlayMessages
 
     /// <summary>«Вставить последнее»: окно, куда вставляли, не получило фокус (или закрыто).</summary>
     public const string FocusNotRestored = "Не удалось вернуться в окно — текст в истории";
+
+    // Обновление: плашка показывается, пока идёт скачивание и после отмены/сбоя запуска.
+    public const string UpdateDownloading = "Скачиваю обновление…";
+    public const string UpdateCancelled = "Обновление отменено";
+    public const string UpdateLaunchFailed = "Не удалось запустить обновление";
+    public const string UpdateUpToDate = "Установлена последняя версия";
+    public const string UpdateCheckFailed = "Не удалось проверить обновления";
 
     private const string NoFallbackSuffix = "; резерв не настроен";
     private const string BothUnavailable = "Gemini и Groq недоступны — подробности в трее";
@@ -87,6 +95,15 @@ public static class OverlayMessages
             : new FailureText(BothUnavailable,
                 ErrorMessages.Describe(primaryError, "Gemini") + "; " + ErrorMessages.Describe(fallbackError, "Groq"));
 
+    /// <summary>Скачивание или проверка файла обновления не удались; в журнале — подробности.</summary>
+    public static string ForDownloadFailure(DownloadFailure failure) => failure switch
+    {
+        DownloadFailure.NotInstallable => "В релизе нет установщика",
+        DownloadFailure.ChecksumFileInvalid or DownloadFailure.SizeMismatch or DownloadFailure.HashMismatch =>
+            "Файл обновления не прошёл проверку",
+        _ => "Не удалось скачать обновление",
+    };
+
     /// <summary>Все возможные строки плашки (по одной на вариант) — для проверки ширины.</summary>
     public static IEnumerable<string> All() => AllTexts().Select(t => t.Short);
 
@@ -97,6 +114,15 @@ public static class OverlayMessages
     {
         yield return FailureText.Same(StartFailed);
         yield return FailureText.Same(DictationError);
+        yield return FailureText.Same(UpdateDownloading);
+        yield return FailureText.Same(UpdateCancelled);
+        yield return FailureText.Same(UpdateLaunchFailed);
+        yield return FailureText.Same(UpdateUpToDate);
+        yield return FailureText.Same(UpdateCheckFailed);
+        foreach (var failure in Enum.GetValues<DownloadFailure>())
+        {
+            yield return FailureText.Same(ForDownloadFailure(failure));
+        }
 
         foreach (var kind in Enum.GetValues<MicrophoneErrorKind>())
         {

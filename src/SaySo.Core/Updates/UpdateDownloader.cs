@@ -1,0 +1,234 @@
+using System.Security.Cryptography;
+using System.Text;
+using SaySo.Core.Diagnostics;
+
+namespace SaySo.Core.Updates;
+
+public enum DownloadFailure
+{
+    /// <summary>В релизе нет Setup.exe или его контрольной суммы.</summary>
+    NotInstallable,
+    Network,
+    Timeout,
+
+    /// <summary>Файл .sha256 не разобрать или он относится к другому файлу.</summary>
+    ChecksumFileInvalid,
+    SizeMismatch,
+    HashMismatch,
+
+    /// <summary>Не удалось записать файл на диск.</summary>
+    Io,
+}
+
+/// <summary>
+/// Проверенный Setup.exe. Файл открыт на чтение без разрешения записи и удаления до <see cref="Dispose"/>: между
+/// проверкой SHA-256 и запуском (в том числе с повышением прав) его не подменить. Как файл-страж в <c>AdminTask.Install</c>.
+/// </summary>
+public sealed class StagedInstaller : IDisposable
+{
+    private readonly FileStream _guard;
+
+    internal StagedInstaller(string path, FileStream guard)
+    {
+        Path = path;
+        _guard = guard;
+    }
+
+    public string Path { get; }
+
+    public void Dispose() => _guard.Dispose();
+
+    /// <summary>Освободить файл и удалить его (отмена обновления).</summary>
+    public void Delete()
+    {
+        _guard.Dispose();
+        UpdateDownloader.TryDelete(Path);
+    }
+}
+
+public sealed record DownloadResult(StagedInstaller? Installer, DownloadFailure? Failure)
+{
+    public static DownloadResult Fail(DownloadFailure failure) => new(null, failure);
+}
+
+/// <summary>
+/// Скачивает Setup.exe релиза в <c>%TEMP%\SaySo-Update</c> и сверяет размер и SHA-256 с .sha256 того же релиза.
+/// При любом несовпадении файл удаляется и ничего не запускается.
+/// </summary>
+public sealed class UpdateDownloader(HttpClient http, string directory)
+{
+    public static readonly TimeSpan DownloadTimeout = TimeSpan.FromMinutes(10);
+
+    private const int MaxChecksumFileBytes = 4096;
+    private const int BufferSize = 81920;
+
+    public async Task<DownloadResult> DownloadAsync(ReleaseInfo release, CancellationToken ct = default)
+    {
+        if (!release.IsInstallable)
+        {
+            return DownloadResult.Fail(DownloadFailure.NotInstallable);
+        }
+
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeout.CancelAfter(DownloadTimeout);
+        var finalPath = Path.Combine(directory, release.SetupFileName);
+        var partPath = finalPath + ".part";
+        try
+        {
+            Directory.CreateDirectory(directory);
+            CleanDirectory();
+
+            var expected = await ReadChecksumAsync(release, timeout.Token).ConfigureAwait(false);
+            if (expected is null)
+            {
+                return DownloadResult.Fail(DownloadFailure.ChecksumFileInvalid);
+            }
+
+            var failure = await DownloadFileAsync(release, partPath, timeout.Token).ConfigureAwait(false);
+            if (failure is not null)
+            {
+                return DownloadResult.Fail(failure.Value);
+            }
+
+            File.Move(partPath, finalPath, overwrite: true);
+            return Verify(finalPath, release.SetupSize, expected);
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            return DownloadResult.Fail(DownloadFailure.Timeout);
+        }
+        catch (HttpRequestException)
+        {
+            return DownloadResult.Fail(DownloadFailure.Network);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            Log.Error("Скачивание обновления", e);
+            return DownloadResult.Fail(DownloadFailure.Io);
+        }
+        finally
+        {
+            TryDelete(partPath);
+        }
+    }
+
+    /// <summary>Строка вида «sha256-hex  SaySo-Setup-X.Y.Z.exe» (имя необязательно, перед ним допустима «*»).</summary>
+    /// <returns>Хэш в нижнем регистре или null, если строка не разобрана или названа по другому файлу.</returns>
+    public static string? ParseChecksum(string text, string expectedFileName)
+    {
+        var line = text.Trim('﻿', ' ', '\t', '\r', '\n');
+        if (line.Contains('\n'))
+        {
+            return null; // ожидается одна строка
+        }
+
+        var parts = line.Split([' ', '\t'], StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length is 0 or > 2 || parts[0].Length != 64 || !parts[0].All(Uri.IsHexDigit))
+        {
+            return null;
+        }
+
+        if (parts.Length == 2 && !string.Equals(parts[1].TrimStart('*'), expectedFileName, StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        return parts[0].ToLowerInvariant();
+    }
+
+    internal static void TryDelete(string path)
+    {
+        try
+        {
+            File.Delete(path);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            // Файл остаётся в TEMP: следующее скачивание его зачистит.
+        }
+    }
+
+    private async Task<string?> ReadChecksumAsync(ReleaseInfo release, CancellationToken ct)
+    {
+        using var response = await http.GetAsync(release.ShaUrl, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new HttpRequestException("Контрольная сумма недоступна", null, response.StatusCode);
+        }
+
+        var bytes = await HttpLimits.ReadAsync(response.Content, MaxChecksumFileBytes, ct).ConfigureAwait(false);
+        return bytes is null ? null : ParseChecksum(Encoding.UTF8.GetString(bytes), release.SetupFileName);
+    }
+
+    private async Task<DownloadFailure?> DownloadFileAsync(ReleaseInfo release, string partPath, CancellationToken ct)
+    {
+        using var response = await http.GetAsync(release.SetupUrl, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new HttpRequestException("Установщик недоступен", null, response.StatusCode);
+        }
+
+        if (response.Content.Headers.ContentLength is { } declared && declared != release.SetupSize)
+        {
+            return DownloadFailure.SizeMismatch; // тело не качаем
+        }
+
+        await using var source = await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+        await using var target = new FileStream(partPath, FileMode.Create, FileAccess.Write, FileShare.None, BufferSize, useAsync: true);
+        var buffer = new byte[BufferSize];
+        long total = 0;
+        int read;
+        while ((read = await source.ReadAsync(buffer, ct).ConfigureAwait(false)) > 0)
+        {
+            total += read;
+            if (total > release.SetupSize)
+            {
+                return DownloadFailure.SizeMismatch; // больше заявленного: дальше не качаем
+            }
+
+            await target.WriteAsync(buffer.AsMemory(0, read), ct).ConfigureAwait(false);
+        }
+
+        return total == release.SetupSize ? null : DownloadFailure.SizeMismatch;
+    }
+
+    /// <summary>Открывает файл-страж и сверяет размер и хэш уже по нему: после этого содержимое изменить нельзя.</summary>
+    private static DownloadResult Verify(string path, long expectedSize, string expectedHash)
+    {
+        var guard = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+        try
+        {
+            if (guard.Length != expectedSize)
+            {
+                guard.Dispose();
+                TryDelete(path);
+                return DownloadResult.Fail(DownloadFailure.SizeMismatch);
+            }
+
+            var actual = Convert.ToHexStringLower(SHA256.HashData(guard));
+            if (!string.Equals(actual, expectedHash, StringComparison.Ordinal))
+            {
+                guard.Dispose();
+                TryDelete(path);
+                return DownloadResult.Fail(DownloadFailure.HashMismatch);
+            }
+
+            guard.Position = 0;
+            return new DownloadResult(new StagedInstaller(path, guard), null);
+        }
+        catch
+        {
+            guard.Dispose();
+            throw;
+        }
+    }
+
+    // Остатки прошлых обновлений (Setup прежней версии, недокачанные .part) в папке больше не нужны.
+    private void CleanDirectory()
+    {
+        foreach (var file in Directory.EnumerateFiles(directory))
+        {
+            TryDelete(file);
+        }
+    }
+}

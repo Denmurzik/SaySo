@@ -1,6 +1,7 @@
 using System.Text.Json.Serialization;
 using SaySo.Core.Settings;
 using SaySo.Core.Storage;
+using SaySo.Core.Updates;
 
 namespace SaySo.Core.Json;
 
@@ -14,4 +15,5 @@ namespace SaySo.Core.Json;
 [JsonSerializable(typeof(AppSettings))]
 [JsonSerializable(typeof(Secrets))]
 [JsonSerializable(typeof(List<HistoryEntry>))]
+[JsonSerializable(typeof(UpdateState))]
 public partial class SaySoJsonContext : JsonSerializerContext;
