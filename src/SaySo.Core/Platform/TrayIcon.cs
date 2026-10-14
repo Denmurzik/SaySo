@@ -67,7 +67,8 @@ internal sealed unsafe class TrayIcon(
 
     /// <summary>
     /// Всплывающее уведомление у значка (NIF_INFO). События — NIN_BALLOONUSERCLICK / NIN_BALLOONTIMEOUT в <c>TrayEvent</c>.
-    /// NIIF_RESPECT_QUIET_TIME: в режиме «Не беспокоить» Windows уведомление не показывает.
+    /// NIIF_RESPECT_QUIET_TIME: не показывать в «тихий час» первого входа в новую учётную запись; режим «Не беспокоить»
+    /// (помощник по фокусировке) подавляет уведомления независимо от этого флага — тогда событий не будет совсем.
     /// </summary>
     /// <returns>false — значка в трее нет (уведомлять некуда).</returns>
     public bool ShowBalloon(string title, string text)

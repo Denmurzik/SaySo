@@ -157,9 +157,9 @@ public sealed class UpdateCheckRunner(UpdateStateStore store, Version current, F
             result = await new UpdateChecker(http, current).CheckAsync(ct).ConfigureAwait(false);
         }
 
-        if (result.CountsAsAttempt)
+        // Файл занят (его пишет второй процесс): не затираем чужие поля пустым состоянием — попытка не засчитается, и только.
+        if (result.CountsAsAttempt && store.TryLoad(out var state))
         {
-            var state = store.Load();
             state.LastCheckUtc = time.GetUtcNow();
             store.Save(state);
         }

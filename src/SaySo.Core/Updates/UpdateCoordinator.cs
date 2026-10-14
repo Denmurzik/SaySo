@@ -154,7 +154,11 @@ public sealed class UpdateCoordinator(
         }
 
         _balloonVersion = null;
-        var state = store.Load();
+        if (!store.TryLoad(out var state))
+        {
+            return; // файл занят: не затираем lastCheckUtc пустым состоянием; уведомление при следующей проверке повторится
+        }
+
         state.DismissedVersion = VersionTag.Normalize(version).ToString(3);
         store.Save(state);
     }

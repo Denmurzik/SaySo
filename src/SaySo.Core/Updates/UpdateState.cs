@@ -20,27 +20,38 @@ public sealed class UpdateStateStore(AppPaths paths)
 {
     public UpdateState Load()
     {
+        TryLoad(out var state);
+        return state;
+    }
+
+    /// <summary>
+    /// <c>false</c> — файл есть, но прочитать его не удалось (занят): вернулось пустое состояние, и записывать его поверх нельзя —
+    /// пропало бы <c>dismissedVersion</c>. Нет файла или он повреждён — <c>true</c> (начинаем с пустого).
+    /// </summary>
+    public bool TryLoad(out UpdateState state)
+    {
         var status = StoreFile.Read(paths.UpdateStateFile, "UpdateStateStore", out var bytes);
         if (bytes is null || status != FileReadStatus.Ok)
         {
-            return new UpdateState();
+            state = new UpdateState();
+            return status != FileReadStatus.Failed;
         }
 
         try
         {
-            var state = JsonSerializer.Deserialize(bytes, SaySoJsonContext.Default.UpdateState) ?? new UpdateState();
+            state = JsonSerializer.Deserialize(bytes, SaySoJsonContext.Default.UpdateState) ?? new UpdateState();
             if (state.DismissedVersion is { } dismissed && !VersionTag.TryParse(dismissed, out _))
             {
                 state.DismissedVersion = null; // испорченное значение хуже его отсутствия
             }
-
-            return state;
         }
         catch (JsonException e)
         {
             StoreFile.Quarantine(paths.UpdateStateFile, "UpdateStateStore", e);
-            return new UpdateState();
+            state = new UpdateState();
         }
+
+        return true;
     }
 
     /// <returns>false — записать не удалось (причина в журнале).</returns>

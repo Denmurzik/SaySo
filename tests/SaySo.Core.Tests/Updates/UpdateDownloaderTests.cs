@@ -159,6 +159,33 @@ public sealed class UpdateDownloaderTests : IDisposable
         Assert.Empty(Directory.GetFiles(Dir));
     }
 
+    [Theory]
+    [InlineData("utf8")]
+    [InlineData("utf8-bom")]
+    [InlineData("utf16-bom")] // Out-File в Windows PowerShell 5.1
+    [InlineData("utf16be-bom")]
+    [InlineData("utf16-nobom")]
+    public async Task ChecksumFileInAnyCommonEncoding_IsAccepted(string encoding)
+    {
+        var line = $"{Sha256Hex(_setup)}  SaySo-Setup-0.2.0.exe\r\n";
+        var bytes = encoding switch
+        {
+            "utf8" => System.Text.Encoding.UTF8.GetBytes(line),
+            "utf8-bom" => [.. System.Text.Encoding.UTF8.GetPreamble(), .. System.Text.Encoding.UTF8.GetBytes(line)],
+            "utf16-bom" => [.. System.Text.Encoding.Unicode.GetPreamble(), .. System.Text.Encoding.Unicode.GetBytes(line)],
+            "utf16be-bom" => [.. System.Text.Encoding.BigEndianUnicode.GetPreamble(), .. System.Text.Encoding.BigEndianUnicode.GetBytes(line)],
+            _ => System.Text.Encoding.Unicode.GetBytes(line),
+        };
+        _handler.Bytes(SetupUrl("0.2.0"), _setup);
+        _handler.Bytes(ShaUrl("0.2.0"), bytes);
+
+        var result = await Download();
+
+        using var installer = result.Installer;
+        Assert.NotNull(installer);
+        Assert.Null(result.Failure);
+    }
+
     [Fact]
     public async Task ChecksumForAnotherFile_FailsWithoutDownloadingTheSetup()
     {

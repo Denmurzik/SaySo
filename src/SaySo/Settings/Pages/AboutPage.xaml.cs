@@ -16,6 +16,7 @@ public sealed partial class AboutPage : UserControl
     private ReleaseInfo? _release;
     private UpdateInstallPlan? _plan;
     private bool _busy;
+    private bool _installStarted;
 
     internal AboutPage(SettingsModel model)
     {
@@ -136,16 +137,18 @@ public sealed partial class AboutPage : UserControl
         finally
         {
             SetBusy(false, UpdateStatus.Text);
-            InstallButton.IsEnabled = true;
+            InstallButton.IsEnabled = !_installStarted;
         }
     }
 
     private void ShowInstallMessage(string text, bool isError) => UpdateStatus.Text = text;
 
+    // Окно не закрываем сами: перед заменой файлов Setup закроет его (и перезапустит SaySo). Здесь — только сохранить введённое.
     private void QuitSettings()
     {
+        _installStarted = true;
         _model.Flush();
-        Application.Current.Exit();
+        UpdateStatus.Text = "Установка запущена — SaySo перезапустится";
     }
 
     private void SetBusy(bool busy, string status)

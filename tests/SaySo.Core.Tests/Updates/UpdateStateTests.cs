@@ -98,6 +98,37 @@ public class UpdateStateTests
     }
 
     [Fact]
+    public void TryLoad_FileLocked_ReportsFailure_SoCallersDoNotOverwriteWithAnEmptyState()
+    {
+        using var dir = new TempDir();
+        var paths = new AppPaths(dir.Path);
+        var store = new UpdateStateStore(paths);
+        store.Save(new UpdateState { DismissedVersion = "0.2.0" });
+
+        using (new HeldFile(paths.UpdateStateFile))
+        {
+            Assert.False(store.TryLoad(out var state));
+            Assert.Null(state.DismissedVersion);
+        }
+
+        Assert.True(store.TryLoad(out var loaded));
+        Assert.Equal("0.2.0", loaded.DismissedVersion);
+    }
+
+    [Fact]
+    public void TryLoad_MissingOrCorrupted_IsStillSuccessful()
+    {
+        using var dir = new TempDir();
+        var paths = new AppPaths(dir.Path);
+        var store = new UpdateStateStore(paths);
+        Assert.True(store.TryLoad(out _));
+
+        File.WriteAllText(paths.UpdateStateFile, "{ not json");
+        Assert.True(store.TryLoad(out var state));
+        Assert.Null(state.LastCheckUtc);
+    }
+
+    [Fact]
     public void StateFile_DoesNotTouchSettings()
     {
         using var dir = new TempDir();

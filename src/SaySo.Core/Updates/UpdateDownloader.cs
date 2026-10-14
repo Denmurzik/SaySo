@@ -157,7 +157,17 @@ public sealed class UpdateDownloader(HttpClient http, string directory)
         }
 
         var bytes = await HttpLimits.ReadAsync(response.Content, MaxChecksumFileBytes, ct).ConfigureAwait(false);
-        return bytes is null ? null : ParseChecksum(Encoding.UTF8.GetString(bytes), release.SetupFileName);
+        return bytes is null ? null : ParseChecksum(DecodeText(bytes), release.SetupFileName);
+    }
+
+    /// <summary>
+    /// UTF-8 (с BOM или без) и UTF-16/32 с BOM: Windows PowerShell 5.1 пишет файлы через <c>Out-File</c> в UTF-16, и
+    /// сумма из такого релиза иначе никогда бы не прошла проверку. Нули — на случай UTF-16 без BOM.
+    /// </summary>
+    internal static string DecodeText(byte[] bytes)
+    {
+        using var reader = new StreamReader(new MemoryStream(bytes), Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
+        return reader.ReadToEnd().Replace("\0", "");
     }
 
     private async Task<DownloadFailure?> DownloadFileAsync(ReleaseInfo release, string partPath, CancellationToken ct)
