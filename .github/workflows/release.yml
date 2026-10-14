@@ -1,0 +1,81 @@
+name: Release
+on:
+  push:
+    tags: ['v*.*.*']
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Только собрать и приложить файлы к запуску, без публикации (опубликовать можно, выбрав запуск на теге и сняв галочку)'
+        type: boolean
+        default: true
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+      - name: Версия совпадает с Directory.Build.props
+        shell: pwsh
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          $propsVersion = (Select-Xml -Path Directory.Build.props -XPath '//Version' | Select-Object -First 1).Node.InnerText.Trim()
+          if ($env:REF_TYPE -eq 'tag') {
+            if ($env:REF_NAME -notmatch '^v(\d+\.\d+\.\d+)$') { throw "Тег '$env:REF_NAME' не вида vX.Y.Z" }
+            if ($Matches[1] -ne $propsVersion) { throw "Тег $env:REF_NAME, а в Directory.Build.props версия $propsVersion — поправьте версию и пересоздайте тег" }
+          }
+          else {
+            Write-Host "Запуск не на теге ($env:REF_NAME): беру версию $propsVersion из Directory.Build.props, публиковать нечего."
+          }
+          "VERSION=$propsVersion" >> $env:GITHUB_ENV
+      - name: Модульные тесты
+        run: dotnet test --project tests/SaySo.Core.Tests -c Release --filter-not-trait "Category=Integration"
+      - name: Заметки к выпуску из CHANGELOG.md
+        shell: pwsh
+        run: ./tools/release-notes.ps1 -Version $env:VERSION -Out artifacts/release-notes.md
+      - name: Сборка установщика и ZIP
+        shell: pwsh
+        run: ./build-installer.ps1 -PortableIscc
+      - name: Файлы выпуска как артефакт запуска
+        uses: actions/upload-artifact@v6
+        with:
+          name: SaySo-${{ env.VERSION }}
+          path: |
+            artifacts/installer/SaySo-Setup-${{ env.VERSION }}.exe
+            artifacts/installer/SaySo-Setup-${{ env.VERSION }}.exe.sha256
+            artifacts/release/SaySo-${{ env.VERSION }}-win-x64.zip
+            artifacts/release-notes.md
+          if-no-files-found: error
+      - name: Опубликовать GitHub Release
+        if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.dry_run == false && github.ref_type == 'tag')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          $files = @(
+            "artifacts/installer/SaySo-Setup-${env:VERSION}.exe",
+            "artifacts/installer/SaySo-Setup-${env:VERSION}.exe.sha256",
+            "artifacts/release/SaySo-${env:VERSION}-win-x64.zip"
+          )
+          # Повторный запуск (перезапуск упавшего job) не должен падать на уже созданном релизе: обновляем файлы и заметки.
+          gh release view $env:TAG --repo $env:GITHUB_REPOSITORY *> $null
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "Релиз $env:TAG уже есть — заменяю файлы и заметки."
+            gh release upload $env:TAG @files --clobber --repo $env:GITHUB_REPOSITORY
+            if ($LASTEXITCODE -ne 0) { throw "gh release upload завершился с кодом $LASTEXITCODE" }
+            gh release edit $env:TAG --title "SaySo ${env:VERSION}" --notes-file artifacts/release-notes.md --draft=false --repo $env:GITHUB_REPOSITORY
+            if ($LASTEXITCODE -ne 0) { throw "gh release edit завершился с кодом $LASTEXITCODE" }
+          }
+          else {
+            gh release create $env:TAG @files --title "SaySo ${env:VERSION}" --notes-file artifacts/release-notes.md --verify-tag --repo $env:GITHUB_REPOSITORY
+            if ($LASTEXITCODE -ne 0) { throw "gh release create завершился с кодом $LASTEXITCODE" }
+          }
