@@ -20,7 +20,7 @@
 - **Tiny in the background.** A NativeAOT daemon that never loads XAML: **{idleWs} MB** working set at idle (**{idlePrivate} MB** private). The WinUI 3 settings window is a separate process that fully exits when you close it.
 - **Never loses what you said.** Add several Gemini keys and SaySo switches to the next one the moment a key hits its quota — even mid-sentence, re-sending what was already recorded. No keys left or network down? The recording goes to **Groq Whisper** with LLM cleanup instead.
 - **Works everywhere.** Pastes into whatever app is focused; your clipboard text is restored and dictations are kept out of Win+V history.
-- **Private by default.** Audio never touches the disk. API keys and history are encrypted with Windows DPAPI.
+- **Private by default.** Audio never touches the disk. API keys and history are encrypted with Windows DPAPI. Data flow: audio is streamed to Google Gemini (and to Groq if the fallback is used); nothing else leaves your PC.
 
 ## How it works
 
@@ -28,7 +28,7 @@
 flowchart LR
     K[Hold Right Ctrl] --> M[WASAPI mic<br/>16 kHz PCM]
     M --> G[Gemini 3.5 Transcribe Live<br/>Smart mode, WebSocket]
-    M -. quota / network error .-> W[Groq Whisper<br/>+ LLM cleanup]
+    M -. quota / auth / network / timeout .-> W[Groq Whisper<br/>+ LLM cleanup]
     G --> P[Clipboard + Ctrl+V<br/>into the focused app]
     W --> P
 ```
@@ -51,11 +51,11 @@ Build from source (needs the .NET 10 SDK and Visual Studio Build Tools with the 
 ```powershell
 git clone https://github.com/Denmurzik/SaySo
 cd SaySo
-./build.ps1      # NativeAOT publish to artifacts/publish
-./install.ps1    # copies to %LOCALAPPDATA%\Programs\SaySo, adds a Start menu shortcut, starts SaySo
+powershell -ExecutionPolicy Bypass -File .\build.ps1     # NativeAOT publish to artifacts/publish; needs >= 4 GB of free RAM
+powershell -ExecutionPolicy Bypass -File .\install.ps1   # copies to %LOCALAPPDATA%\Programs\SaySo, adds a Start menu shortcut, starts SaySo
 ```
 
-Uninstall: `./uninstall.ps1` (add `-RemoveData` to also delete settings, keys and history).
+Uninstall: `powershell -ExecutionPolicy Bypass -File .\uninstall.ps1` (add `-RemoveData` to also delete settings, keys and history). Both install scripts accept `-Target <folder>` and `-WhatIf`.
 
 ## API keys
 
