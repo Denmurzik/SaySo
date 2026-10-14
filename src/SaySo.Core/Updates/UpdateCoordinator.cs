@@ -463,8 +463,11 @@ public sealed class UpdateCoordinator(
                 Log.Info($"Setup завершился с кодом {run.ExitCode}, SaySo ещё работает");
                 if (run.ExitCode == 0)
                 {
-                    // Успех при живом демоне не штатен; файл не трогаем — повышенная копия Setup могла ещё читать его.
+                    // Настоящее обновление останавливает демон по IPC Quit раньше, чем завершается Setup. Демон жив — обновления
+                    // не было (например, отказ в UAC самозапуска с повышением: код выхода Inno в этом случае не гарантирован).
+                    // Файл не трогаем: вдруг повышенная копия Setup ещё читает его; следующее скачивание зачистит папку.
                     installer.Dispose();
+                    host.ShowMessage(OverlayMessages.UpdateNotInstalled, isError: true);
                 }
                 else
                 {

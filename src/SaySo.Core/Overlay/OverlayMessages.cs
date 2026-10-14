@@ -39,6 +39,7 @@ public static class OverlayMessages
     public const string UpdateInstalling = "Устанавливаю обновление…";
     public const string UpdateCancelled = "Обновление отменено";
     public const string UpdateInstallFailed = "Не удалось установить обновление";
+    public const string UpdateNotInstalled = "Обновление не установлено";
     public const string UpdateLaunchFailed = "Не удалось запустить обновление";
     public const string UpdateUpToDate = "Установлена последняя версия";
     public const string UpdateCheckFailed = "Не удалось проверить обновления";
@@ -119,6 +120,7 @@ public static class OverlayMessages
         yield return UpdateInstalling;
         yield return UpdateCancelled;
         yield return UpdateInstallFailed;
+        yield return UpdateNotInstalled;
         yield return UpdateLaunchFailed;
         yield return UpdateUpToDate;
         yield return UpdateCheckFailed;
