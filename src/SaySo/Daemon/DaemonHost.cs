@@ -663,7 +663,7 @@ internal sealed class DaemonHost : IDisposable
             _cancelInFlight = false;
         }
 
-        // Путь сбоя микрофона не вызывает SessionEnded, поэтому применяем и здесь (повторный вызов безвреден).
+        // Отмена сама поднимает SessionEnded (в том числе при сбое микрофона); этот вызов страхует случай, когда отменять было уже нечего.
         if (_dictation.State != DictationState.Recording && !_disposing)
         {
             ApplyPendingHotkeyChanges();

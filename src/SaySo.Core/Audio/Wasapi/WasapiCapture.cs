@@ -18,6 +18,7 @@ public sealed unsafe class WasapiCapture : IDisposable
                                     | 0x80000000  // AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM
                                     | 0x08000000; // AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY
     private const uint BufferFlagSilent = 0x2;    // AUDCLNT_BUFFERFLAGS_SILENT
+    private static readonly TimeSpan StopJoinTimeout = TimeSpan.FromSeconds(3);
 
     private readonly string? _deviceId;
     private readonly string? _deviceName;
@@ -63,8 +64,17 @@ public sealed unsafe class WasapiCapture : IDisposable
 
         _stopRequested = true;
         Native.SetEvent(_stopEvent);
-        _thread.Join();
+        var thread = _thread;
         _thread = null;
+        if (!thread.Join(StopJoinTimeout))
+        {
+            // Поток завис в драйвере (Activate/Initialize). Главный поток ждать его не должен; событие остановки не закрываем —
+            // поток может ещё его ждать, а увидев _stopRequested, сам завершится и освободит свои ресурсы.
+            Log.Info("Поток захвата не завершился вовремя — оставлен в фоне");
+            _stopEvent = 0;
+            return;
+        }
+
         Native.CloseHandle(_stopEvent);
         _stopEvent = 0;
     }

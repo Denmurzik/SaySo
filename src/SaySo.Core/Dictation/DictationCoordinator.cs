@@ -28,11 +28,18 @@ public sealed class DictationCoordinator(
     public static readonly TimeSpan EngineStartDelay = TimeSpan.FromMilliseconds(150);
     public static readonly TimeSpan AutoStopAfter = TimeSpan.FromSeconds(AudioFormat.AutoStopSeconds);
 
+    /// <summary>Дольше этого запуск микрофона (Activate/Initialize) считается зависшим драйвером.</summary>
+    public static readonly TimeSpan MicrophoneStartTimeout = TimeSpan.FromSeconds(5);
+
+    private const int ErrorTimeoutHResult = unchecked((int)0x800705B4); // HRESULT_FROM_WIN32(ERROR_TIMEOUT)
+
     private DictationRun? _run;
     private IAudioSource? _source;
     private Task? _starting;
     private IDisposable? _engineTimer;
     private IDisposable? _autoStopTimer;
+    private long _pressedAt;
+    private PendingError? _pending;
 
     public event Action? SessionEnded;
 
@@ -52,9 +59,18 @@ public sealed class DictationCoordinator(
     {
         if (State != DictationState.Idle)
         {
+            if (State == DictationState.Finishing)
+            {
+                // Нажатие во время обработки прошлой записи не запишется — даём знать звуком ошибки, но так же, как при сбое
+                // микрофона, не раньше EngineStartDelay: правый Ctrl+C сразу после диктовки остаётся тихим.
+                SchedulePending(null);
+            }
+
             return Task.CompletedTask;
         }
 
+        DiscardPending(endSession: false); // отложенная ошибка прошлой попытки: новое нажатие её отменяет
+        _pressedAt = time.GetTimestamp();
         State = DictationState.Recording;
         _starting = StartCoreAsync();
         return _starting;
@@ -70,7 +86,7 @@ public sealed class DictationCoordinator(
         {
             source = audio(run.PushAudio, e => postToMain(() => OnMicrophoneError(run, e)));
             _source = source;
-            await source.StartAsync();
+            await StartSourceAsync(source);
         }
         catch (MicrophoneException e)
         {
@@ -83,16 +99,28 @@ public sealed class DictationCoordinator(
             failure = FailureText.Same(OverlayMessages.StartFailed);
         }
 
-        if (failure is not null)
+        if (failure is { } text)
         {
-            // Откат: сначала состояние и реакция, потом освобождение ресурсов.
+            // Откат: сначала состояние, потом освобождение ресурсов. Сбой уже записан в журнал; микрофон стартует при
+            // каждом нажатии горячей клавиши, но пищать на сочетаниях вроде правого Ctrl+C из-за этого нельзя.
             if (ReferenceEquals(run, _run))
             {
                 _source = null;
                 _run = null;
                 State = DictationState.Idle;
-                Fail(failure.Value);
-                resetHotkey();
+                var remaining = EngineStartDelay - time.GetElapsedTime(_pressedAt);
+                if (remaining > TimeSpan.Zero)
+                {
+                    // Cancel/Stop раньше EngineStartDelay (это было сочетание клавиш) отменят показ. Сброс автомата хука и
+                    // SessionEnded — вместе с показом или отменой: после сброса автомат ушёл бы в Idle и не заметил бы вторую клавишу.
+                    SchedulePending(text, remaining);
+                }
+                else
+                {
+                    Fail(text);
+                    resetHotkey();
+                    SessionEnded?.Invoke();
+                }
             }
 
             source?.Dispose();
@@ -125,6 +153,11 @@ public sealed class DictationCoordinator(
     {
         if (State != DictationState.Recording || expected is null || !ReferenceEquals(expected, _run))
         {
+            if (!auto)
+            {
+                DiscardPending(endSession: true); // сочетание клавиш: отложенная ошибка (старт микрофона, Finishing) не показывается
+            }
+
             return;
         }
 
@@ -135,6 +168,11 @@ public sealed class DictationCoordinator(
 
         if (State != DictationState.Recording || !ReferenceEquals(expected, _run))
         {
+            if (!auto)
+            {
+                DiscardPending(endSession: true); // запуск микрофона не удался, пока ждали: Stop отменяет показ ошибки
+            }
+
             return;
         }
 
@@ -224,6 +262,7 @@ public sealed class DictationCoordinator(
     {
         if (State != DictationState.Recording || _run is not { } run)
         {
+            DiscardPending(endSession: true); // сочетание клавиш: отложенная ошибка (старт микрофона, Finishing) не показывается
             return;
         }
 
@@ -234,6 +273,7 @@ public sealed class DictationCoordinator(
 
         if (State != DictationState.Recording || !ReferenceEquals(run, _run))
         {
+            DiscardPending(endSession: true); // запуск микрофона не удался, пока ждали: Cancel отменяет показ ошибки
             return;
         }
 
@@ -257,6 +297,86 @@ public sealed class DictationCoordinator(
 
         Log.Info($"Микрофон во время записи: {e.Kind}");
         _ = StopAsync(run, auto: false);
+    }
+
+    /// <summary>
+    /// Запуск микрофона с ограничением по времени: зависший драйвер (Activate/Initialize) не должен навсегда оставить
+    /// координатор в Recording. Таймаут — через планировщик, а не <c>Task.WaitAsync</c>: так его можно подменить в тестах.
+    /// </summary>
+    private async Task StartSourceAsync(IAudioSource source)
+    {
+        var start = source.StartAsync();
+        if (start.IsCompleted)
+        {
+            await start;
+            return;
+        }
+
+        var timedOut = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var timer = scheduler.Schedule(MicrophoneStartTimeout, () => timedOut.TrySetResult());
+        if (await Task.WhenAny(start, timedOut.Task) == start)
+        {
+            await start;
+            return;
+        }
+
+        _ = start.ContinueWith(static t => _ = t.Exception, TaskContinuationOptions.OnlyOnFaulted); // позднюю ошибку никто не ждёт
+        throw new MicrophoneException(MicrophoneErrorKind.Other, ErrorTimeoutHResult, "Запуск микрофона не завершился вовремя");
+    }
+
+    /// <summary>
+    /// Ошибка, показ которой отложен на <see cref="EngineStartDelay"/> от нажатия: если за это время пришли Cancel/Stop,
+    /// это было сочетание клавиш — ничего не показываем. <paramref name="text"/> == null — только звук ошибки.
+    /// </summary>
+    private void SchedulePending(FailureText? text, TimeSpan? delay = null)
+    {
+        if (_pending is not null)
+        {
+            return;
+        }
+
+        var pending = new PendingError(text);
+        _pending = pending;
+        pending.Timer = scheduler.Schedule(delay ?? EngineStartDelay, () => OnPendingElapsed(pending));
+    }
+
+    private void OnPendingElapsed(PendingError pending)
+    {
+        if (!ReferenceEquals(pending, _pending))
+        {
+            return;
+        }
+
+        _pending = null;
+        if (pending.Text is not { } text)
+        {
+            PlaySound(SoundKind.Error);
+            return;
+        }
+
+        Fail(text);
+        resetHotkey();
+        SessionEnded?.Invoke();
+    }
+
+    /// <param name="endSession">
+    /// Отменённая ошибка сбоя старта завершает «сессию»: сброс автомата хука и <see cref="SessionEnded"/> (отложенная
+    /// переустановка хука и перенастройка клавиш). Новое нажатие их не вызывает — оно само начало сессию.
+    /// </param>
+    private void DiscardPending(bool endSession)
+    {
+        if (_pending is not { } pending)
+        {
+            return;
+        }
+
+        _pending = null;
+        pending.Timer?.Dispose();
+        if (endSession && pending.Text is not null)
+        {
+            resetHotkey();
+            SessionEnded?.Invoke();
+        }
     }
 
     private static async Task DisposeRunAsync(DictationRun run)
@@ -305,5 +425,12 @@ public sealed class DictationCoordinator(
         {
             feedback.Play(kind);
         }
+    }
+
+    private sealed class PendingError(FailureText? text)
+    {
+        public FailureText? Text { get; } = text;
+
+        public IDisposable? Timer { get; set; }
     }
 }
