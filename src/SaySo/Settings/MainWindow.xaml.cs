@@ -9,6 +9,9 @@ namespace SaySo.Settings;
 
 public sealed partial class MainWindow : Window
 {
+    private const int MinWidthDip = 760;
+    private const int MinHeightDip = 520;
+
     private readonly SettingsModel _model = new();
 
     public MainWindow()
@@ -21,6 +24,8 @@ public sealed partial class MainWindow : Window
         var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
         var scale = Native.GetDpiForWindow(hwnd) / 96.0;
         AppWindow.Resize(new Windows.Graphics.SizeInt32((int)(980 * scale), (int)(720 * scale)));
+        // Меньше этого закреплённая панель и карточки не помещаются (контент обрезается).
+        WindowMinSize.Apply(hwnd, MinWidthDip, MinHeightDip);
         Closed += (_, _) => ShutDownSettings();
         Nav.SelectedItem = Nav.MenuItems[0];
     }

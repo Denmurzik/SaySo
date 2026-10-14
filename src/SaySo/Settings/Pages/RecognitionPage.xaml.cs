@@ -246,9 +246,11 @@ public sealed partial class RecognitionPage : UserControl
     private void ShowModelTexts()
     {
         var r = _model.Settings.Recognition;
+        _loading = true; // синхронные изменения Text не должны считаться вводом; асинхронные отсекает сравнение в OnModelTextChanged
         GeminiModelBox.Text = r.GeminiModel;
         WhisperModelBox.Text = r.GroqWhisperModel;
         CleanupModelBox.Text = r.GroqCleanupModel;
+        _loading = false;
     }
 
     private void OnFallbackToggled(object sender, RoutedEventArgs e)

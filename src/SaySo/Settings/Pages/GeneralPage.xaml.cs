@@ -90,7 +90,7 @@ public sealed partial class GeneralPage : UserControl
             TapValue.Text = $"{ms} мс";
         }
 
-        if (_loading)
+        if (_loading || ms == _model.Settings.Hotkey.TapThresholdMs)
         {
             return;
         }
@@ -142,6 +142,11 @@ public sealed partial class GeneralPage : UserControl
         }
 
         var enable = AdminSwitch.IsOn;
+        if (enable == _model.Settings.RunAsAdmin)
+        {
+            return; // Toggled после присвоения IsOn при открытии страницы: режим не менялся, UAC не нужен
+        }
+
         AdminSwitch.IsEnabled = false;
         try
         {
