@@ -1,0 +1,45 @@
+name: Release
+on:
+  push:
+    tags: ['v*.*.*']
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+      - name: Версия тега совпадает с Directory.Build.props
+        shell: pwsh
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          if ($env:TAG -notmatch '^v(\d+\.\d+\.\d+)$') { throw "Тег '$env:TAG' не вида vX.Y.Z" }
+          $tagVersion = $Matches[1]
+          $propsVersion = (Select-Xml -Path Directory.Build.props -XPath '//Version' | Select-Object -First 1).Node.InnerText.Trim()
+          if ($tagVersion -ne $propsVersion) { throw "Тег $env:TAG, а в Directory.Build.props версия $propsVersion — поправьте версию и пересоздайте тег" }
+          "VERSION=$tagVersion" >> $env:GITHUB_ENV
+      - name: Модульные тесты
+        run: dotnet test --project tests/SaySo.Core.Tests -c Release --filter-not-trait "Category=Integration"
+      - name: Заметки к выпуску из CHANGELOG.md
+        shell: pwsh
+        run: ./tools/release-notes.ps1 -Version $env:VERSION -Out artifacts/release-notes.md
+      - name: Сборка установщика и ZIP
+        shell: pwsh
+        run: ./build-installer.ps1
+      - name: Создать GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          gh release create $env:TAG `
+            "artifacts/installer/SaySo-Setup-${env:VERSION}.exe" `
+            "artifacts/installer/SaySo-Setup-${env:VERSION}.exe.sha256" `
+            "artifacts/release/SaySo-${env:VERSION}-win-x64.zip" `
+            --title "SaySo ${env:VERSION}" --notes-file artifacts/release-notes.md --verify-tag
+          if ($LASTEXITCODE -ne 0) { throw "gh release create завершился с кодом $LASTEXITCODE" }
