@@ -13,7 +13,8 @@ public sealed partial class AboutPage : UserControl
     {
         _model = model;
         InitializeComponent();
-        VersionText.Text = $"Версия {typeof(AboutPage).Assembly.GetName().Version?.ToString(3)} · лицензия Apache-2.0";
+        var version = typeof(AboutPage).Assembly.GetName().Version?.ToString(3);
+        VersionText.Text = $"{(version is null ? "Версия неизвестна" : "Версия " + version)} · лицензия Apache-2.0";
     }
 
     private void OnOpenDataFolder(object sender, RoutedEventArgs e)

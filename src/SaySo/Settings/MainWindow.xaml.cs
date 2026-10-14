@@ -17,7 +17,13 @@ public sealed partial class MainWindow : Window
         var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
         var scale = Native.GetDpiForWindow(hwnd) / 96.0;
         AppWindow.Resize(new Windows.Graphics.SizeInt32((int)(980 * scale), (int)(720 * scale)));
-        Closed += (_, _) => _model.SaveSecrets();
+        Closed += (_, _) =>
+        {
+            // Unloaded при закрытии окна не гарантирован — останавливаем проверку микрофона и сохраняем словарь явно.
+            (PageHost.Content as MicrophonePage)?.Shutdown();
+            (PageHost.Content as DictionaryPage)?.SaveIfChanged();
+            _model.SaveSecrets();
+        };
         Nav.SelectedItem = Nav.MenuItems[0];
     }
 

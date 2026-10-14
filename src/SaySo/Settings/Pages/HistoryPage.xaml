@@ -9,6 +9,7 @@
                 <Button Content="Очистить историю" HorizontalAlignment="Right" Click="OnClear" />
             </Grid>
             <TextBlock Style="{StaticResource CardDescription}" Text="Последние 20 диктовок. Хранятся только на этом компьютере в зашифрованном виде." />
+            <InfoBar x:Name="Info" IsOpen="False" IsClosable="True" Severity="Error" />
             <StackPanel x:Name="Items" Spacing="8" Margin="0,8,0,0" />
         </StackPanel>
     </ScrollViewer>

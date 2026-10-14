@@ -66,8 +66,18 @@ public sealed partial class MicrophonePage : UserControl
             return;
         }
 
-        _model.Settings.MicrophoneDeviceId = item.Tag as string;
-        _model.SaveSettings();
+        try
+        {
+            _model.Settings.MicrophoneDeviceId = item.Tag as string;
+            _model.SaveSettings();
+        }
+        catch (Exception ex)
+        {
+            Log.Error("MicrophonePage.SaveDevice", ex);
+            ShowMessage("Не удалось сохранить — файл занят, попробуйте ещё раз.", privacyLink: false);
+            return;
+        }
+
         if (TestButton.IsChecked == true)
         {
             StopTest();
@@ -79,7 +89,14 @@ public sealed partial class MicrophonePage : UserControl
 
     private void OnTestUnchecked(object sender, RoutedEventArgs e) => StopTest();
 
-    private void OnUnloaded(object sender, RoutedEventArgs e) => StopTest();
+    private void OnUnloaded(object sender, RoutedEventArgs e)
+    {
+        StopTest();
+        TestButton.IsChecked = false; // Unchecked → StopTest (идемпотентно): кнопка не остаётся нажатой без захвата
+    }
+
+    /// <summary>Остановка проверки при закрытии окна.</summary>
+    internal void Shutdown() => StopTest();
 
     private async Task StartTestAsync()
     {

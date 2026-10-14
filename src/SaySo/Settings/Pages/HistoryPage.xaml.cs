@@ -1,3 +1,4 @@
+using System.Globalization;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using SaySo.Core.Diagnostics;
@@ -56,7 +57,7 @@ public sealed partial class HistoryPage : UserControl
             var body = new StackPanel { Spacing = 4 };
             body.Children.Add(new TextBlock
             {
-                Text = $"{entry.At.ToLocalTime():dd.MM.yyyy HH:mm} · {EngineName(entry.Engine)}",
+                Text = $"{entry.At.ToLocalTime().ToString("dd.MM.yyyy HH:mm", CultureInfo.InvariantCulture)} · {EngineName(entry.Engine)}",
                 Style = (Style)Application.Current.Resources["CardDescription"],
             });
             body.Children.Add(new TextBlock { Text = entry.Text, TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true });
@@ -72,9 +73,33 @@ public sealed partial class HistoryPage : UserControl
         }
     }
 
-    private void OnClear(object sender, RoutedEventArgs e)
+    private async void OnClear(object sender, RoutedEventArgs e)
     {
-        _model.History.Clear();
-        Render([]);
+        try
+        {
+            var dialog = new ContentDialog
+            {
+                XamlRoot = XamlRoot,
+                Title = "Очистить историю?",
+                Content = "Все сохранённые диктовки будут удалены без возможности восстановления.",
+                PrimaryButtonText = "Очистить",
+                CloseButtonText = "Отмена",
+                DefaultButton = ContentDialogButton.Close,
+            };
+            if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+            {
+                return;
+            }
+
+            _model.History.Clear();
+            Info.IsOpen = false;
+            Render([]);
+        }
+        catch (Exception ex)
+        {
+            Log.Error("HistoryPage.Clear", ex);
+            Info.Message = "Не удалось очистить историю — файл занят, попробуйте ещё раз.";
+            Info.IsOpen = true;
+        }
     }
 }
