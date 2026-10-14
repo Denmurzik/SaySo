@@ -43,7 +43,10 @@
                     <NavigationViewItem.Icon><FontIcon Glyph="&#xE946;" /></NavigationViewItem.Icon>
                 </NavigationViewItem>
             </NavigationView.MenuItems>
-            <ContentControl x:Name="PageHost" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch" />
+            <Grid>
+                <ContentControl x:Name="PageHost" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch" />
+                <InfoBar x:Name="SaveInfo" IsOpen="False" IsClosable="True" Severity="Error" VerticalAlignment="Bottom" Margin="32,0,32,16" />
+            </Grid>
         </NavigationView>
     </Grid>
 </Window>

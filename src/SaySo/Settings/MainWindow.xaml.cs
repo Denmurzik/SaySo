@@ -1,5 +1,6 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using SaySo.Core.Diagnostics;
 using SaySo.Core.Interop;
 using SaySo.Core.Platform;
 using SaySo.Settings.Pages;
@@ -28,7 +29,9 @@ public sealed partial class MainWindow : Window
     {
         var tag = (args.SelectedItem as NavigationViewItem)?.Tag as string;
         HotkeyCapture.CancelActive(); // запись горячей клавиши принадлежит странице, которую сейчас заменят
-        _model.Flush();
+        // Не записали (файл занят) — предупреждаем здесь: у страницы, которую заменяем, уже не спросить.
+        SaveInfo.Message = SettingsModel.SaveFailedMessage;
+        SaveInfo.IsOpen = !_model.Flush();
         PageHost.Content = tag switch
         {
             "general" => new GeneralPage(_model),
@@ -42,6 +45,10 @@ public sealed partial class MainWindow : Window
     {
         HotkeyCapture.CancelActive();
         IpcClient.Send(IpcProtocol.ResumeHotkey); // идемпотентно: если запись шла, демон не должен остаться без горячей клавиши
-        _model.Flush(); // ключи и настройки, введённые, но ещё не записанные (потеря фокуса не наступила)
+        // Ключи и настройки, введённые, но ещё не записанные (потеря фокуса не наступила). Окно закрывается — только журнал.
+        if (!_model.Flush())
+        {
+            Log.Info("Окно настроек закрыто с несохранёнными изменениями (файл занят).");
+        }
     }
 }

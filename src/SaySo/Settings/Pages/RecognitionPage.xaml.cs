@@ -18,8 +18,6 @@ public sealed partial class RecognitionPage : UserControl
         ("English (en-US)", ["en-US"]),
     ];
 
-    private static readonly char[] KeySeparators = [',', ';', ' ', '\t', '\r', '\n'];
-
     private readonly SettingsModel _model;
     private bool _loading = true;
 
@@ -99,15 +97,21 @@ public sealed partial class RecognitionPage : UserControl
     // Вставленная строка «k1, k2» (через запятую, пробел или перевод строки) разбивается на отдельные строки ключей.
     private void OnGeminiKeyLostFocus(PasswordBox box)
     {
-        if (_loading)
+        // Строку уже удалили кнопкой «Удалить» — сохранение выполнил её обработчик, поле больше не в списке.
+        if (_loading || box.Parent is not Grid row)
         {
             return;
         }
 
-        var parts = box.Password.Split(KeySeparators, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        if (parts.Length > 1 && box.Parent is Grid row)
+        var index = GeminiKeysPanel.Children.IndexOf(row);
+        if (index < 0)
         {
-            var index = GeminiKeysPanel.Children.IndexOf(row);
+            return;
+        }
+
+        var parts = SettingsModel.SplitKeys(box.Password);
+        if (parts.Length > 1)
+        {
             box.Password = parts[0];
             for (var i = 1; i < parts.Length; i++)
             {
@@ -174,7 +178,14 @@ public sealed partial class RecognitionPage : UserControl
             return;
         }
 
-        _model.Settings.Recognition.Mode = ModeButtons.SelectedIndex == 1 ? TranscriptionMode.Verbatim : TranscriptionMode.Smart;
+        // SelectionChanged приходит и асинхронно после присвоения SelectedIndex при открытии: то же значение — не изменение.
+        var mode = ModeButtons.SelectedIndex == 1 ? TranscriptionMode.Verbatim : TranscriptionMode.Smart;
+        if (mode == _model.Settings.Recognition.Mode)
+        {
+            return;
+        }
+
+        _model.Settings.Recognition.Mode = mode;
         SaveSettingsOrWarn();
     }
 
@@ -185,14 +196,25 @@ public sealed partial class RecognitionPage : UserControl
             return; // пункт «Свои: …» оставляет коды как есть
         }
 
-        _model.Settings.Recognition.LanguageCodes = Languages[LanguageBox.SelectedIndex].Codes.ToList();
+        var codes = Languages[LanguageBox.SelectedIndex].Codes;
+        if (codes.SequenceEqual(_model.Settings.Recognition.LanguageCodes, StringComparer.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        _model.Settings.Recognition.LanguageCodes = codes.ToList();
         SaveSettingsOrWarn();
     }
 
     // Текстовые поля моделей: значение уходит в модель сразу при вводе (запись — при потере фокуса и закрытии окна).
     private void OnModelTextChanged(object sender, TextChangedEventArgs e)
     {
-        if (_loading)
+        // TextChanged приходит асинхронно, в том числе после присвоения Text при открытии страницы и после
+        // нормализации: значения, равные уже известным модели, изменением не считаются.
+        var r = _model.Settings.Recognition;
+        if (_loading || (GeminiModelBox.Text == r.GeminiModel
+            && WhisperModelBox.Text == r.GroqWhisperModel
+            && CleanupModelBox.Text == r.GroqCleanupModel))
         {
             return;
         }
@@ -224,16 +246,19 @@ public sealed partial class RecognitionPage : UserControl
     private void ShowModelTexts()
     {
         var r = _model.Settings.Recognition;
-        _loading = true; // присвоение Text вызвало бы TextChanged и снова пометило бы настройки несохранёнными
         GeminiModelBox.Text = r.GeminiModel;
         WhisperModelBox.Text = r.GroqWhisperModel;
         CleanupModelBox.Text = r.GroqCleanupModel;
-        _loading = false;
     }
 
     private void OnFallbackToggled(object sender, RoutedEventArgs e)
     {
         if (_loading)
+        {
+            return;
+        }
+
+        if (FallbackSwitch.IsOn == _model.Settings.Recognition.GroqFallbackEnabled)
         {
             return;
         }
@@ -245,6 +270,11 @@ public sealed partial class RecognitionPage : UserControl
     private void OnCleanupToggled(object sender, RoutedEventArgs e)
     {
         if (_loading)
+        {
+            return;
+        }
+
+        if (CleanupSwitch.IsOn == _model.Settings.Recognition.GroqCleanupEnabled)
         {
             return;
         }

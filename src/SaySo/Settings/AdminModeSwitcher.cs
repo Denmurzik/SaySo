@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Diagnostics;
+using SaySo.Core.Diagnostics;
 using SaySo.Core.Platform;
 
 namespace SaySo.Settings;
@@ -44,7 +45,10 @@ internal static class AdminModeSwitcher
 
         if (!persist())
         {
-            return SettingsModel.SaveFailedMessage;
+            // Состояние задачи Планировщика и настройка разошлись: демон не перезапускаем, пользователю говорим прямо.
+            Log.Info($"Режим администратора: задача {(enable ? "установлена" : "снята")}, но настройку сохранить не удалось.");
+            return "Задача Планировщика " + (enable ? "установлена" : "снята")
+                + ", но настройку сохранить не удалось (файл занят). Повторите переключение.";
         }
 
         IpcClient.Send(IpcProtocol.Quit);

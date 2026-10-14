@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using SaySo.Core.Diagnostics;
 using SaySo.Core.Platform;
 using SaySo.Core.Settings;
@@ -55,7 +56,7 @@ internal sealed class SettingsModel
         {
             _settingsStore.Save(Settings);
         }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or CryptographicException)
         {
             Log.Error("Сохранение настроек", e);
             return false;
@@ -66,15 +67,35 @@ internal sealed class SettingsModel
         return true;
     }
 
+    /// <summary>Разделители ключей в одной строке (вставка «k1, k2» или ключей с новой строки).</summary>
+    private static readonly char[] KeySeparators = [',', ';', ' ', '\t', '\r', '\n'];
+
+    /// <summary>Разбить строку на отдельные ключи (пустой результат — ключей нет).</summary>
+    public static string[] SplitKeys(string? text) =>
+        (text ?? "").Split(KeySeparators, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+    /// <summary>Запомнить ключи Gemini; строки вида «k1, k2» разбиваются. Изменений нет — модель не помечается несохранённой.</summary>
     public void SetGeminiKeys(IEnumerable<string?> keys)
     {
-        Secrets.GeminiApiKeys = keys.Select(Clean).OfType<string>().ToList();
+        var cleaned = keys.SelectMany(SplitKeys).ToList();
+        if (cleaned.SequenceEqual(Secrets.GeminiApiKeys))
+        {
+            return;
+        }
+
+        Secrets.GeminiApiKeys = cleaned;
         _secretsDirty = true;
     }
 
     public void SetGroqKey(string? key)
     {
-        Secrets.GroqApiKey = Clean(key);
+        var cleaned = Clean(key);
+        if (cleaned == Secrets.GroqApiKey)
+        {
+            return;
+        }
+
+        Secrets.GroqApiKey = cleaned;
         _secretsDirty = true;
     }
 
@@ -90,7 +111,7 @@ internal sealed class SettingsModel
         {
             _secretStore.Save(Secrets);
         }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or CryptographicException)
         {
             Log.Error("Сохранение ключей", e);
             return false;

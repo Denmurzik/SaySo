@@ -109,6 +109,11 @@ public sealed partial class GeneralPage : UserControl
             return;
         }
 
+        if (SoundsSwitch.IsOn == _model.Settings.SoundsEnabled)
+        {
+            return; // Toggled может прийти после присвоения IsOn при открытии страницы
+        }
+
         _model.Settings.SoundsEnabled = SoundsSwitch.IsOn;
         SaveOrWarn();
     }
@@ -116,6 +121,11 @@ public sealed partial class GeneralPage : UserControl
     private void OnAutostartToggled(object sender, RoutedEventArgs e)
     {
         if (_loading)
+        {
+            return;
+        }
+
+        if (AutostartSwitch.IsOn == _model.Settings.AutostartEnabled)
         {
             return;
         }
