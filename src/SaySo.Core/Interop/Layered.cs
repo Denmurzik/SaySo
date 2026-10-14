@@ -5,7 +5,6 @@ namespace SaySo.Core.Interop;
 internal static unsafe partial class Native
 {
     public const int SW_HIDE = 0;
-    public const int SW_SHOWNOACTIVATE = 4;
     public const uint ULW_ALPHA = 0x2;
     public const byte AC_SRC_OVER = 0x0;
     public const byte AC_SRC_ALPHA = 0x1;

@@ -106,6 +106,72 @@ public class OverlayWindowIntegrationTests
         }
     });
 
+    // KillTimer возвращает true, только если таймер существовал: так видно, какие таймеры живы у окна.
+    private static bool TimerExists(OverlayWindow overlay, nuint id) => Native.KillTimer(overlay.Handle, id);
+
+    [Fact]
+    public void WhileVisible_TopmostTimerExists_AndAnimationTimerOnlyForAnimatedModes() => OnStaThread(() =>
+    {
+        using var recording = new OverlayWindow(() => 0);
+        recording.ShowRecording();
+        Assert.True(TimerExists(recording, OverlayWindow.TopmostTimer));
+        Assert.True(TimerExists(recording, OverlayWindow.AnimationTimer));
+        recording.Hide();
+
+        using var message = new OverlayWindow(() => 0);
+        message.ShowMessage("Речь не распознана", OverlayTone.Info);
+        Assert.True(TimerExists(message, OverlayWindow.TopmostTimer));
+        Assert.True(TimerExists(message, OverlayWindow.HideTimer));
+        Assert.False(TimerExists(message, OverlayWindow.AnimationTimer)); // сообщение не анимируется
+        message.Hide();
+    });
+
+    [Fact]
+    public void Hide_StopsEveryTimer_AfterRecording() => OnStaThread(() =>
+    {
+        using var overlay = new OverlayWindow(() => 0);
+        overlay.ShowRecording();
+        TestWindows.Pump(100);
+        overlay.Hide();
+
+        Assert.False(TimerExists(overlay, OverlayWindow.TopmostTimer), "таймер подъёма пережил Hide()");
+        Assert.False(TimerExists(overlay, OverlayWindow.AnimationTimer), "таймер анимации пережил Hide()");
+        Assert.False(TimerExists(overlay, OverlayWindow.HideTimer));
+    });
+
+    [Fact]
+    public void Hide_StopsEveryTimer_AfterMessage() => OnStaThread(() =>
+    {
+        using var overlay = new OverlayWindow(() => 0);
+        overlay.ShowMessage("Речь не распознана", OverlayTone.Info);
+        TestWindows.Pump(100);
+        overlay.Hide();
+
+        Assert.False(TimerExists(overlay, OverlayWindow.TopmostTimer), "таймер подъёма пережил Hide()");
+        Assert.False(TimerExists(overlay, OverlayWindow.HideTimer), "таймер скрытия пережил Hide()");
+        Assert.False(TimerExists(overlay, OverlayWindow.AnimationTimer));
+    });
+
+    [Fact]
+    public void HiddenOverlay_IsNotRaisedOrShownAgain() => OnStaThread(() =>
+    {
+        using var overlay = new OverlayWindow(() => 0);
+        overlay.ShowRecording();
+        overlay.Hide();
+        var cover = TestWindows.CreateTopmostCover(0, 0, 300, 300);
+        try
+        {
+            TestWindows.Pump(RaiseWaitMs);
+
+            Assert.False(TestWindows.IsVisible(overlay.Handle), "скрытая плашка снова показана");
+            Assert.False(TestWindows.IsAbove(overlay.Handle, cover));
+        }
+        finally
+        {
+            TestWindows.Destroy(cover);
+        }
+    });
+
     private static void OnStaThread(Action body)
     {
         Exception? error = null;

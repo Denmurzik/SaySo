@@ -37,6 +37,8 @@ internal static unsafe partial class TestWindows
 
     public static void Destroy(nint hwnd) => DestroyWindow(hwnd);
 
+    public static bool IsVisible(nint hwnd) => IsWindowVisible(hwnd);
+
     public static bool IsTopmost(nint hwnd) => (GetWindowLongPtrW(hwnd, GWL_EXSTYLE) & WS_EX_TOPMOST) != 0;
 
     /// <summary>true — <paramref name="upper"/> выше <paramref name="lower"/> в порядке окон верхнего уровня.</summary>
@@ -86,6 +88,10 @@ internal static unsafe partial class TestWindows
     [LibraryImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static partial bool DestroyWindow(nint hwnd);
+
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool IsWindowVisible(nint hwnd);
 
     [LibraryImport("user32.dll")]
     private static partial nint GetWindow(nint hwnd, uint command);

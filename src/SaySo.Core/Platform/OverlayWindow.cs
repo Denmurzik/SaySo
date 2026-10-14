@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using SaySo.Core.Dictation;
 using SaySo.Core.Interop;
 using SaySo.Core.Overlay;
@@ -14,9 +15,10 @@ namespace SaySo.Core.Platform;
 /// </summary>
 internal sealed unsafe class OverlayWindow : NativeWindow, IDictationOverlay
 {
-    private const nuint AnimationTimer = 1;
-    private const nuint HideTimer = 2;
-    private const nuint TopmostTimer = 3;
+    // Идентификаторы таймеров окна открыты тестам: KillTimer возвращает false, если таймера нет, — так проверяется «в простое таймеров нет».
+    internal const nuint AnimationTimer = 1;
+    internal const nuint HideTimer = 2;
+    internal const nuint TopmostTimer = 3;
     private const uint FrameMs = 33;
     private const uint TopmostMs = 250; // у сообщения нет таймера анимации, поэтому подъём — отдельный и редкий
     private const uint MessageMs = 3000;
@@ -183,7 +185,7 @@ internal sealed unsafe class OverlayWindow : NativeWindow, IDictationOverlay
         if (!Native.SetWindowPos(Handle, Native.HWND_TOPMOST, 0, 0, 0, 0, Flags) && !_raiseFailureLogged)
         {
             _raiseFailureLogged = true; // раз за показ: подъём идёт каждые 250 мс
-            PlatformLog.Info($"SetWindowPos(HWND_TOPMOST) не удался: код {System.Runtime.InteropServices.Marshal.GetLastPInvokeError()}");
+            PlatformLog.Info($"SetWindowPos(HWND_TOPMOST) не удался: код {Marshal.GetLastPInvokeError()}");
         }
     }
 
@@ -229,7 +231,7 @@ internal sealed unsafe class OverlayWindow : NativeWindow, IDictationOverlay
             && !_layerFailureLogged)
         {
             _layerFailureLogged = true; // раз за показ: кадры идут каждые 33 мс
-            PlatformLog.Info($"UpdateLayeredWindow не удался: код {System.Runtime.InteropServices.Marshal.GetLastPInvokeError()}");
+            PlatformLog.Info($"UpdateLayeredWindow не удался: код {Marshal.GetLastPInvokeError()}");
         }
 
         return true;
