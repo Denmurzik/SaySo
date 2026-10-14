@@ -5,11 +5,17 @@ namespace SaySo.Core.Tests.Platform;
 
 public class WindowAndSyncTests
 {
-    private static void OnLoopThread(Action body)
+    /// <summary>
+    /// Выполняет тело в STA-потоке с циклом сообщений: исключения переносятся в тест, а зависший цикл
+    /// принудительно завершается через WM_QUIT, чтобы не повесить хост тестов.
+    /// </summary>
+    internal static void OnLoopThread(Action body)
     {
         Exception? error = null;
+        uint threadId = 0;
         var t = new Thread(() =>
         {
+            threadId = Native.GetCurrentThreadId();
             try
             {
                 body();
@@ -21,11 +27,36 @@ public class WindowAndSyncTests
         });
         t.SetApartmentState(ApartmentState.STA);
         t.Start();
-        Assert.True(t.Join(TimeSpan.FromSeconds(10)), "Цикл сообщений не завершился.");
+        if (!t.Join(TimeSpan.FromSeconds(10)))
+        {
+            Native.PostThreadMessageW(threadId, Native.WM_QUIT, 0, 0);
+            t.Join(TimeSpan.FromSeconds(2));
+            throw new Xunit.Sdk.XunitException("Цикл сообщений не завершился.");
+        }
+
         if (error is not null)
         {
             throw new Xunit.Sdk.XunitException(error.ToString());
         }
+    }
+
+    private static Exception? SendFromForeignThread(Win32SynchronizationContext ctx, Action action)
+    {
+        Exception? caught = null;
+        var t = new Thread(() =>
+        {
+            try
+            {
+                ctx.Send(_ => action(), null);
+            }
+            catch (Exception e)
+            {
+                caught = e;
+            }
+        });
+        t.Start();
+        Assert.True(t.Join(TimeSpan.FromSeconds(10)), "Send завис.");
+        return caught;
     }
 
     [Fact]
@@ -101,5 +132,59 @@ public class WindowAndSyncTests
             Native.PostMessageW(window.Handle, Boom, 0, 0);
             MessageLoop.Run();
         });
+    }
+
+    [Fact]
+    public void Send_FromForeignThread_AfterWindowDestroyed_Throws()
+    {
+        const uint Sync = Native.WM_APP + 8;
+        var window = new MessageWindow("SaySo.Test.Dead." + Guid.NewGuid().ToString("N"), (_, _, _) => null, messageOnly: true);
+        var ctx = new Win32SynchronizationContext(window.Handle, Sync);
+        window.Dispose();
+        var ran = false;
+        var error = SendFromForeignThread(ctx, () => ran = true);
+        Assert.IsType<InvalidOperationException>(error);
+        Assert.False(ran);
+    }
+
+    [Fact]
+    public void Send_FromForeignThread_WhenLoopNotPumping_TimesOutAndIsAbandoned()
+    {
+        const uint Sync = Native.WM_APP + 8;
+        using var window = new MessageWindow("SaySo.Test.Stall." + Guid.NewGuid().ToString("N"), (_, _, _) => null, messageOnly: true);
+        var ctx = new Win32SynchronizationContext(window.Handle, Sync) { SendTimeout = TimeSpan.FromMilliseconds(200) };
+        var ran = false;
+        var error = SendFromForeignThread(ctx, () => ran = true);
+        Assert.IsType<TimeoutException>(error);
+        ctx.Drain(); // отказавшийся ждать Send не должен выполниться позже
+        Assert.False(ran);
+    }
+
+    [Fact]
+    public void Drain_DoesNotRunItemsPostedDuringSameDrain()
+    {
+        const uint Sync = Native.WM_APP + 8;
+        using var window = new MessageWindow("SaySo.Test.Drain." + Guid.NewGuid().ToString("N"), (_, _, _) => null, messageOnly: true);
+        var ctx = new Win32SynchronizationContext(window.Handle, Sync);
+        int first = 0, second = 0;
+        ctx.Post(_ =>
+        {
+            first++;
+            ctx.Post(_ => second++, null);
+        }, null);
+        ctx.Drain();
+        Assert.Equal((1, 0), (first, second));
+        ctx.Drain();
+        Assert.Equal((1, 1), (first, second));
+    }
+
+    [Fact]
+    public void WindowDestroyedExternally_ResetsHandle_AndDisposeIsNoOp()
+    {
+        var window = new MessageWindow("SaySo.Test.Ncd." + Guid.NewGuid().ToString("N"), (_, _, _) => null, messageOnly: true);
+        Assert.NotEqual(0, window.Handle);
+        Native.DestroyWindow(window.Handle);
+        Assert.Equal(0, window.Handle);
+        window.Dispose();
     }
 }

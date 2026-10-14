@@ -23,8 +23,9 @@ internal sealed class HotkeyListener : IDisposable
 
     public void Configure(IReadOnlyList<int> keys, int tapThresholdMs)
     {
-        var copy = keys.ToArray();
-        _hook.Post(() => _machine = Create(copy, tapThresholdMs));
+        // Автомат строится на потоке вызывающего: некорректный список клавиш бросает исключение сюда, а не в поток хука.
+        var machine = Create(keys.ToArray(), tapThresholdMs);
+        _hook.Post(() => _machine = machine);
     }
 
     public void Reset() => _hook.Post(() => _machine.Reset());

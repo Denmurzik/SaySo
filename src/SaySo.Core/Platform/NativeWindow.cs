@@ -28,7 +28,10 @@ internal abstract unsafe class NativeWindow : IDisposable
             Live.Remove(hwnd);
         }
 
-        Native.DestroyWindow(hwnd);
+        if (!Native.DestroyWindow(hwnd))
+        {
+            PlatformLog.Info($"DestroyWindow не удался: код {Marshal.GetLastPInvokeError()}");
+        }
     }
 
     protected void CreateHandle(string className, uint exStyle, uint style, nint parent, string? title = null)
@@ -94,8 +97,49 @@ internal abstract unsafe class NativeWindow : IDisposable
         catch (Exception e)
         {
             // Исключение не должно уйти в нативный код — это аварийное завершение процесса.
-            Log.Error($"WndProc 0x{msg:X4}", e);
+            PlatformLog.Error($"WndProc 0x{msg:X4}", e);
             return 0;
+        }
+        finally
+        {
+            if (msg == Native.WM_NCDESTROY)
+            {
+                // Окно уничтожено снаружи (не через Dispose): забываем его, чтобы не оставлять устаревшее состояние.
+                lock (Gate)
+                {
+                    Live.Remove(hwnd);
+                }
+
+                window.Handle = 0;
+            }
+        }
+    }
+}
+
+/// <summary>Журнал для границ управляемый/нативный код: сам никогда не бросает исключений.</summary>
+internal static class PlatformLog
+{
+    public static void Info(string message)
+    {
+        try
+        {
+            Log.Info(message);
+        }
+        catch
+        {
+            // журнал недоступен — не страшно
+        }
+    }
+
+    public static void Error(string context, Exception e)
+    {
+        try
+        {
+            Log.Error(context, e);
+        }
+        catch
+        {
+            // журнал недоступен — не страшно
         }
     }
 }

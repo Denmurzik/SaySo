@@ -10,12 +10,16 @@ public class IpcTests
         Assert.False(IpcClient.Send(IpcProtocol.ReloadSettings, "SaySo.Test.NoSuchWindow." + Guid.NewGuid().ToString("N")));
 
     [Fact]
+    public void IsDaemonRunning_WithoutDaemon_ReturnsFalse() =>
+        Assert.False(IpcClient.IsDaemonRunning("SaySo.Test.NoSuchWindow." + Guid.NewGuid().ToString("N")));
+
+    [Fact]
     public void Send_ReachesHiddenTopLevelWindow()
     {
         var cls = "SaySo.Test.Ipc." + Guid.NewGuid().ToString("N");
         var reload = Native.RegisterWindowMessageW(IpcProtocol.ReloadSettings);
         var got = false;
-        var t = new Thread(() =>
+        WindowAndSyncTests.OnLoopThread(() =>
         {
             using var window = new MessageWindow(cls, (msg, _, _) =>
             {
@@ -32,8 +36,6 @@ public class IpcTests
             Assert.True(IpcClient.Send(IpcProtocol.ReloadSettings, cls));
             MessageLoop.Run();
         });
-        t.Start();
-        Assert.True(t.Join(TimeSpan.FromSeconds(10)));
         Assert.True(got);
     }
 

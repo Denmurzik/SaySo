@@ -25,7 +25,13 @@ public static class IpcClient
     public static bool Send(string message, string windowClass = IpcProtocol.WindowClass)
     {
         var hwnd = Find(windowClass);
-        return hwnd != 0 && Native.PostMessageW(hwnd, Native.RegisterWindowMessageW(message), 0, 0);
+        if (hwnd == 0)
+        {
+            return false;
+        }
+
+        var id = Native.RegisterWindowMessageW(message);
+        return id != 0 && Native.PostMessageW(hwnd, id, 0, 0);
     }
 
     private static nint Find(string windowClass) => Native.FindWindowExW(0, 0, windowClass, null);

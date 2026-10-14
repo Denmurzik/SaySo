@@ -63,7 +63,7 @@ public class HookIntegrationTests
     {
         const uint Action = Native.WM_APP + 9;
         var actions = new List<HotkeyAction>();
-        var t = new Thread(() =>
+        WindowAndSyncTests.OnLoopThread(() =>
         {
             using var window = new MessageWindow("SaySo.Test.Listener." + Guid.NewGuid().ToString("N"), (msg, w, _) =>
             {
@@ -92,8 +92,13 @@ public class HookIntegrationTests
             });
             MessageLoop.Run();
         });
-        t.Start();
-        Assert.True(t.Join(TimeSpan.FromSeconds(10)));
         Assert.Equal([HotkeyAction.StartRecording, HotkeyAction.StopRecording], actions);
+    }
+
+    [Fact]
+    public void Configure_WithEmptyKeys_ThrowsToCaller()
+    {
+        using var listener = new HotkeyListener(0, Native.WM_APP + 9, [Unassigned], 300);
+        Assert.Throws<ArgumentException>(() => listener.Configure([], 300));
     }
 }

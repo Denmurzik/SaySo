@@ -1,7 +1,6 @@
 using System.Collections.Concurrent;
 using System.ComponentModel;
 using System.Runtime.InteropServices;
-using SaySo.Core.Diagnostics;
 using SaySo.Core.Hotkeys;
 using SaySo.Core.Input;
 using SaySo.Core.Interop;
@@ -32,7 +31,7 @@ internal sealed unsafe class LowLevelKeyboardHook : IDisposable
         }
 
         _onKey = onKey;
-        _thread = new Thread(Run) { IsBackground = true, Name = "SaySo.KeyboardHook" };
+        _thread = new Thread(Run) { IsBackground = true, Name = "SaySo.KeyboardHook", Priority = ThreadPriority.AboveNormal };
         _thread.Start();
         _ready.Wait();
         if (_startError is not null)
@@ -53,8 +52,13 @@ internal sealed unsafe class LowLevelKeyboardHook : IDisposable
     {
         if (_threadId != 0)
         {
-            Native.PostThreadMessageW(_threadId, Native.WM_QUIT, 0, 0);
-            _thread.Join(TimeSpan.FromSeconds(2));
+            Post(() => Native.PostQuitMessage(0));
+            if (!_thread.Join(TimeSpan.FromSeconds(2)))
+            {
+                // Хук ещё установлен — не освобождаем s_current, иначе второй хук в процессе окажется возможным.
+                PlatformLog.Info("Поток хука клавиатуры не завершился за 2 с.");
+                return;
+            }
         }
 
         Interlocked.CompareExchange(ref s_current, null, this);
@@ -91,7 +95,7 @@ internal sealed unsafe class LowLevelKeyboardHook : IDisposable
                         }
                         catch (Exception e)
                         {
-                            Log.Error("Действие потока хука", e);
+                            PlatformLog.Error("Действие потока хука", e);
                         }
                     }
 
@@ -121,7 +125,7 @@ internal sealed unsafe class LowLevelKeyboardHook : IDisposable
                 var e = new KeyEvent(
                     (int)data->vkCode,
                     message is Native.WM_KEYDOWN or Native.WM_SYSKEYDOWN,
-                    data->dwExtraInfo == KeyboardInjector.InjectionMarker,
+                    (data->flags & Native.LLKHF_INJECTED) != 0 && data->dwExtraInfo == KeyboardInjector.InjectionMarker,
                     data->time);
                 if (self._onKey(e))
                 {
@@ -130,7 +134,15 @@ internal sealed unsafe class LowLevelKeyboardHook : IDisposable
             }
             catch (Exception ex)
             {
-                Log.Error("Колбэк хука", ex);
+                // Файловый ввод-вывод в колбэке хука нельзя: Windows снимает медленный хук. Пишем в журнал с пула потоков.
+                try
+                {
+                    ThreadPool.UnsafeQueueUserWorkItem(static e => PlatformLog.Error("Колбэк хука", e), ex, preferLocal: false);
+                }
+                catch
+                {
+                    // не удалось — ничего страшного, главное не пробросить исключение в нативный код
+                }
             }
         }
 

@@ -12,6 +12,7 @@ internal static unsafe partial class Native
     public const uint WM_QUIT = 0x0012;
     public const uint WM_SETTINGCHANGE = 0x001A;
     public const uint WM_CONTEXTMENU = 0x007B;
+    public const uint WM_NCDESTROY = 0x0082;
     public const uint WM_KEYDOWN = 0x0100;
     public const uint WM_KEYUP = 0x0101;
     public const uint WM_SYSKEYDOWN = 0x0104;
@@ -35,6 +36,7 @@ internal static unsafe partial class Native
     public const int WH_KEYBOARD_LL = 13;
     public const uint MSGFLT_ALLOW = 1;
     public const uint PM_REMOVE = 1;
+    public const uint LLKHF_INJECTED = 0x10;
     public const uint NOTIFY_FOR_THIS_SESSION = 0;
     public const uint WTS_SESSION_LOCK = 7;
     public const uint WTS_SESSION_UNLOCK = 8;
