@@ -5,6 +5,7 @@ using SaySo.Core.Audio;
 using SaySo.Core.Engines;
 using SaySo.Core.Engines.Gemini;
 using SaySo.Core.Engines.Groq;
+using SaySo.Core.Overlay;
 using SaySo.Core.Settings;
 using SaySo.Probe;
 
@@ -26,8 +27,11 @@ try
         case "errors":
             await ErrorScenarios(opts);
             return 0;
+        case "render-demo":
+            RenderDemo(opts.Get("out") ?? "docs/assets/overlay-demo.png");
+            return 0;
         default:
-            Console.WriteLine("Команды: gemini --wav F [--realtime] [--mode smart|verbatim] [--lang ru-RU] [--vocab \"a,b\"] [--model M] [--query-key] | session --wav F [--realtime] | groq --wav F [--no-cleanup] | errors");
+            Console.WriteLine("Команды: render-demo [--out F] | gemini --wav F [--realtime] [--mode smart|verbatim] [--lang ru-RU] [--vocab \"a,b\"] [--model M] [--query-key] | session --wav F [--realtime] | groq --wav F [--no-cleanup] | errors");
             return 2;
     }
 }
@@ -194,6 +198,37 @@ static async Task ErrorScenarios(Args o)
             Console.WriteLine($"   {e.Kind}: {e.Message}");
         }
     }
+}
+
+static void RenderDemo(string path)
+{
+    const float scale = 2f;
+    var levels = new float[OverlayRenderer.BarCount];
+    var (w, h) = OverlayRenderer.Measure(new OverlayFrame(OverlayMode.Recording, levels, 0), scale);
+    var frames = new List<uint[]>();
+    uint[] Draw(OverlayFrame f)
+    {
+        var px = new uint[w * h];
+        OverlayRenderer.Render(px, w, h, f, scale);
+        return px;
+    }
+
+    for (var i = 0; i < 54; i++) // ~1,8 с записи: «речь» с паузами
+    {
+        var speech = i < 4 ? 0.08f : Math.Clamp(0.55f + 0.42f * MathF.Sin(i * 0.7f) * MathF.Sin(i * 0.23f + 1f), 0f, 1f);
+        Array.Copy(levels, 1, levels, 0, levels.Length - 1);
+        levels[^1] = speech;
+        frames.Add(Draw(new OverlayFrame(OverlayMode.Recording, levels.ToArray(), i * 33L)));
+    }
+
+    for (var i = 0; i < 30; i++) // ~1 с обработки
+    {
+        frames.Add(Draw(new OverlayFrame(OverlayMode.Processing, [], i * 33L)));
+    }
+
+    Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
+    ApngWriter.Write(path, w, h, frames, 33);
+    Console.WriteLine($"OK {path} ({w}×{h}, кадров: {frames.Count})");
 }
 
 /// <summary>Простейший разбор аргументов: команда + --ключ [значение].</summary>
