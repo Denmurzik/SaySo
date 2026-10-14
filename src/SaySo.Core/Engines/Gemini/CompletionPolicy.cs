@@ -22,7 +22,8 @@ public enum CompletionState
 
 /// <summary>
 /// Решает, когда после отправки конца потока весь финальный текст получен. Явный сигнал конца у
-/// transcribe-модели не задокументирован, поэтому: конец хода (если пришёл) ИЛИ период тишины ИЛИ таймаут.
+/// transcribe-модели не задокументирован, поэтому: конец хода (если пришёл) ИЛИ период тишины (только после
+/// хотя бы одного фрагмента текста) ИЛИ жёсткий таймаут.
 /// Не потокобезопасен. Время — миллисекунды монотонных часов.
 /// </summary>
 public sealed class CompletionPolicy(CompletionTimings timings)
@@ -30,6 +31,7 @@ public sealed class CompletionPolicy(CompletionTimings timings)
     private long? _endSentAt;
     private long _lastEventAt;
     private bool _turnCompleteAfterEnd;
+    private bool _sawTranscript;
 
     public bool HasPendingInterim { get; private set; }
 
@@ -44,9 +46,11 @@ public sealed class CompletionPolicy(CompletionTimings timings)
         switch (e.Kind)
         {
             case GeminiEventKind.Interim:
+                _sawTranscript = true;
                 HasPendingInterim = !string.IsNullOrWhiteSpace(e.Text);
                 break;
             case GeminiEventKind.Final:
+                _sawTranscript = true;
                 HasPendingInterim = false;
                 break;
             case GeminiEventKind.TurnComplete when _endSentAt is not null:
@@ -72,7 +76,9 @@ public sealed class CompletionPolicy(CompletionTimings timings)
             return CompletionState.Done;
         }
 
-        if (nowMs - _lastEventAt >= CurrentQuietMs)
+        // Пока не пришло ни одного фрагмента текста, тишина — не признак конца: медленный сервер
+        // ещё может ответить, поэтому ждём только конца хода или жёсткого таймаута.
+        if (_sawTranscript && nowMs - _lastEventAt >= CurrentQuietMs)
         {
             return CompletionState.Done;
         }
@@ -82,7 +88,11 @@ public sealed class CompletionPolicy(CompletionTimings timings)
 
     /// <summary>Когда переоценить состояние, если новых событий не будет.</summary>
     public long NextCheckAt() =>
-        _endSentAt is not { } end ? long.MaxValue : Math.Min(_lastEventAt + CurrentQuietMs, end + timings.HardTimeoutMs);
+        _endSentAt is not { } end
+            ? long.MaxValue
+            : _sawTranscript
+                ? Math.Min(_lastEventAt + CurrentQuietMs, end + timings.HardTimeoutMs)
+                : end + timings.HardTimeoutMs;
 
     private int CurrentQuietMs => HasPendingInterim ? timings.QuietWithPendingInterimMs : timings.QuietMs;
 }

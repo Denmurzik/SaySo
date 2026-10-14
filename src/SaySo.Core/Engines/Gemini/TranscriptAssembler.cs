@@ -4,7 +4,8 @@ namespace SaySo.Core.Engines.Gemini;
 
 /// <summary>
 /// Собирает итоговый текст из финальных сегментов. Поддерживает и приращения («Привет.» + «Как дела?»),
-/// и накопительные финалы («Привет.» → «Привет. Как дела?»). Не потокобезопасен.
+/// и накопительные финалы («Привет.» → «Привет. Как дела?»): накопительным считается только финал,
+/// строго длиннее накопленного и начинающийся с него; равный или короче — новый сегмент. Не потокобезопасен.
 /// </summary>
 public sealed class TranscriptAssembler
 {
@@ -23,7 +24,7 @@ public sealed class TranscriptAssembler
             return;
         }
 
-        _final = _final.Length > 0 && text.StartsWith(_final, StringComparison.Ordinal)
+        _final = _final.Length > 0 && text.Length > _final.Length && text.StartsWith(_final, StringComparison.Ordinal)
             ? text
             : TextJoin.Join(_final, text);
         FinalCount++;

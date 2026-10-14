@@ -24,6 +24,16 @@ public class TranscriptAssemblerTests
     }
 
     [Fact]
+    public void RepeatedIncrementalFinal_IsNotSwallowed()
+    {
+        var a = new TranscriptAssembler();
+        a.AddFinal("Да.");
+        a.AddFinal("Да.");
+        Assert.Equal("Да. Да.", a.BuildResult(false));
+        Assert.Equal(2, a.FinalCount);
+    }
+
+    [Fact]
     public void WhitespaceFinal_IsIgnored()
     {
         var a = new TranscriptAssembler();

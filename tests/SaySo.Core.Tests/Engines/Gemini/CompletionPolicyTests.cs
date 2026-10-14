@@ -86,11 +86,23 @@ public class CompletionPolicyTests
     }
 
     [Fact]
-    public void NoEventsAtAll_DoneAfterQuiet()
+    public void NoTranscriptAtAll_WaitsForHardTimeout()
     {
         var p = NewPolicy();
         p.OnEndSent(5000);
-        Assert.Equal(CompletionState.Waiting, p.Evaluate(6199));
-        Assert.Equal(CompletionState.Done, p.Evaluate(6200));
+        Assert.Equal(CompletionState.Waiting, p.Evaluate(6200));
+        Assert.Equal(CompletionState.Waiting, p.Evaluate(12999));
+        Assert.Equal(CompletionState.TimedOut, p.Evaluate(13000));
+        Assert.Equal(13000, p.NextCheckAt());
+    }
+
+    [Fact]
+    public void InterimBeforeEnd_ThenSilence_UsesPendingQuiet()
+    {
+        var p = NewPolicy();
+        p.OnEvent(Interim, 100);
+        p.OnEndSent(200);
+        Assert.Equal(CompletionState.Waiting, p.Evaluate(3199));
+        Assert.Equal(CompletionState.Done, p.Evaluate(3200));
     }
 }
