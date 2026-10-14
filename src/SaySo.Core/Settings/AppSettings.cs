@@ -1,0 +1,68 @@
+namespace SaySo.Core.Settings;
+
+/// <summary>Несекретные настройки (settings.json).</summary>
+public sealed class AppSettings
+{
+    public int SchemaVersion { get; set; } = 1;
+
+    public HotkeySettings Hotkey { get; set; } = new();
+
+    public RecognitionSettings Recognition { get; set; } = new();
+
+    /// <summary>Словарь терминов (до 1000).</summary>
+    public List<string> Vocabulary { get; set; } = [];
+
+    /// <summary>Идентификатор устройства WASAPI; null — системный микрофон по умолчанию.</summary>
+    public string? MicrophoneDeviceId { get; set; }
+
+    public bool SoundsEnabled { get; set; } = true;
+
+    public bool AutostartEnabled { get; set; } = true;
+
+    /// <summary>Запуск демона с правами администратора (для вставки в админ-окна).</summary>
+    public bool RunAsAdmin { get; set; }
+}
+
+public sealed class HotkeySettings
+{
+    /// <summary>Коды виртуальных клавиш комбинации (VK_*). По умолчанию — правый Ctrl.</summary>
+    public List<int> Keys { get; set; } = [0xA3];
+
+    /// <summary>Нажатие короче порога включает режим «руки свободны».</summary>
+    public int TapThresholdMs { get; set; } = 300;
+}
+
+public sealed class RecognitionSettings
+{
+    public const string DefaultGeminiModel = "gemini-3.5-transcribe-live";
+    public const string DefaultGeminiEndpoint =
+        "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent";
+    public const string DefaultGroqBaseUrl = "https://api.groq.com/openai/v1";
+    public const string DefaultGroqWhisperModel = "whisper-large-v3";
+    public const string DefaultGroqCleanupModel = "openai/gpt-oss-120b";
+
+    public string GeminiModel { get; set; } = DefaultGeminiModel;
+
+    public string GeminiEndpoint { get; set; } = DefaultGeminiEndpoint;
+
+    public TranscriptionMode Mode { get; set; } = TranscriptionMode.Smart;
+
+    /// <summary>Коды BCP-47; пустой список — автоопределение языка.</summary>
+    public List<string> LanguageCodes { get; set; } = [];
+
+    public bool GroqFallbackEnabled { get; set; } = true;
+
+    public string GroqBaseUrl { get; set; } = DefaultGroqBaseUrl;
+
+    public string GroqWhisperModel { get; set; } = DefaultGroqWhisperModel;
+
+    public bool GroqCleanupEnabled { get; set; } = true;
+
+    public string GroqCleanupModel { get; set; } = DefaultGroqCleanupModel;
+}
+
+public enum TranscriptionMode
+{
+    Smart,
+    Verbatim,
+}
