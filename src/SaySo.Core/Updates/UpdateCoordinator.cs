@@ -465,8 +465,8 @@ public sealed class UpdateCoordinator(
                 {
                     // Настоящее обновление останавливает демон по IPC Quit раньше, чем завершается Setup. Демон жив — обновления
                     // не было (например, отказ в UAC самозапуска с повышением: код выхода Inno в этом случае не гарантирован).
-                    // Файл не трогаем: вдруг повышенная копия Setup ещё читает его; следующее скачивание зачистит папку.
-                    installer.Dispose();
+                    // Скачанный файл удаляем (если его ещё держит повышенная копия Setup, удаление молча не удастся).
+                    installer.Delete();
                     host.ShowMessage(OverlayMessages.UpdateNotInstalled, isError: true);
                 }
                 else

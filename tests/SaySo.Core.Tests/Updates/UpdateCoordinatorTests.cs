@@ -528,7 +528,7 @@ public sealed class UpdateCoordinatorTests : IDisposable
     }
 
     [Fact]
-    public async Task SetupExitsWithZeroWhileWeAreStillAlive_MeansNotInstalled_AndKeepsTheFile()
+    public async Task SetupExitsWithZeroWhileWeAreStillAlive_MeansNotInstalled_AndRemovesTheFile()
     {
         // Настоящее обновление остановило бы нас по IPC Quit до выхода Setup; код 0 при живом демоне — обновления не было.
         ServeRelease();
@@ -538,8 +538,7 @@ public sealed class UpdateCoordinatorTests : IDisposable
 
         Assert.Contains(_host.Messages, m => m.Text == OverlayMessages.UpdateNotInstalled && m.IsError);
         Assert.DoesNotContain(_host.Messages, m => m.Text == OverlayMessages.UpdateCancelled);
-        Assert.True(File.Exists(StagedExe)); // повышенная копия Setup могла ещё читать файл: не удаляем
-        File.SetLastWriteTimeUtc(StagedExe, DateTime.UtcNow); // страж снят
+        Assert.False(File.Exists(StagedExe));
     }
 
     [Fact]
