@@ -87,11 +87,11 @@ Requirements: Windows 11 x64, a microphone, a Gemini API key (free tier) and opt
    - **For all users** — installs to `C:\Program Files\SaySo` and asks for administrator rights (UAC).
 4. Optionally add a desktop shortcut and tick *Launch SaySo*. The Start menu shortcut is always created. The wizard is in Russian, and in English when the Windows display language is English.
 
-Installing a newer `SaySo-Setup` over an older one updates in place: the running SaySo is closed, settings, keys and history are kept. For scripted installs: `SaySo-Setup-X.Y.Z.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /CURRENTUSER` (or `/ALLUSERS`); a silent install does not start SaySo.
+Installing a newer `SaySo-Setup` over an older one updates in place: the running SaySo is closed, settings, keys and history are kept. For scripted installs: `SaySo-Setup-X.Y.Z.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /CURRENTUSER` (or `/ALLUSERS`); a silent install does not start SaySo. In the *for all users* mode the installer closes only the SaySo of the user who runs it: copies running in other Windows sessions are not stopped, so some files may stay locked — sign those users out (or restart the PC) and run the installer again.
 
 **Portable.** Every release also has `SaySo-X.Y.Z-win-x64.zip`: unpack it anywhere and run `SaySo.exe`. A copy that was not installed by the installer cannot update itself: the *Update* button opens the release page instead.
 
-**Uninstall:** *Settings → Apps → Installed apps → SaySo → Uninstall*. The uninstaller stops SaySo, removes the autostart entry and the Task Scheduler task if they point to this installation, and asks whether to delete settings, keys and history too (`%LOCALAPPDATA%\SaySo`; the default answer is *No*, and a silent uninstall keeps them). The Task Scheduler task of the admin mode can only be removed with administrator rights: if that fails, the uninstaller shows the `schtasks /Delete /TN SaySo /F` command.
+**Uninstall:** *Settings → Apps → Installed apps → SaySo → Uninstall*. The uninstaller stops SaySo, removes the autostart entry and the Task Scheduler task if they point to this installation, and asks whether to delete settings, keys and history too (`%LOCALAPPDATA%\SaySo`; the default answer is *No*, and a silent uninstall keeps them). The Task Scheduler task of the admin mode can only be removed with administrator rights: the uninstaller first offers a UAC prompt for it and, if you decline or it fails, shows the `schtasks /Delete /TN SaySo /F` command to run yourself from an elevated command prompt.
 
 ### Updates
 
@@ -174,4 +174,4 @@ Command mode (edit selected text by voice), per-app styles, snippets, local mode
 
 ## License
 
-SaySo is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License v3 or (at your option) any later version ([GPL-3.0-or-later](LICENSE)). It comes with no warranty. Version 0.1.0 was released under Apache-2.0.
+SaySo is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License or (at your option) any later version ([GPL-3.0-or-later](LICENSE)). It comes with no warranty. Version 0.1.0 was released under Apache-2.0.
