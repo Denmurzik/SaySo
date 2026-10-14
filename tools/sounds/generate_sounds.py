@@ -2,11 +2,14 @@
 
 Результат (48 кГц, моно, 16 бит) лежит в src/SaySo.Core/Assets/Sounds/<id>/ и встраивается в SaySo.Core как ресурс.
 Скрипт детерминирован (шум «комнаты» и «тапа» берётся из фиксированных зёрен), поэтому повторный запуск
-даёт те же байты. Нужны numpy и scipy.
+даёт те же байты. Файлы в репозитории получены на Python 3.13.7, numpy 2.3.1 и scipy 1.16.0; другие версии библиотек
+могут дать отличия в последних разрядах выборок (на слух незаметные), поэтому перегенерировать файлы стоит только
+при намеренной правке звуков.
 
 Запуск из корня репозитория:
     python tools/sounds/generate_sounds.py src/SaySo.Core/Assets/Sounds
-Необязательный ключ --demo добавляет в каталог вывода файлы <id>-demo.wav (start, stop и error подряд) для прослушивания.
+Необязательный ключ --demo <каталог> дополнительно пишет туда файлы <id>-demo.wav (start, stop и error подряд)
+для прослушивания; каталог должен быть другим, в каталоге ресурсов им не место.
 """
 import os
 import sys
@@ -201,13 +204,23 @@ PEAK = {"start": -14.0, "stop": -14.0, "error": -12.0}
 
 
 def main():
-    args = [a for a in sys.argv[1:] if not a.startswith("--")]
-    demo_enabled = "--demo" in sys.argv[1:]
+    args = sys.argv[1:]
+    demo_dir = None
+    if "--demo" in args:
+        i = args.index("--demo")
+        if i + 1 >= len(args):
+            sys.exit("После --demo нужен каталог для демо-файлов.")
+        demo_dir = args[i + 1]
+        del args[i:i + 2]
     if len(args) != 1:
-        sys.exit("Использование: python generate_sounds.py <каталог вывода> [--demo]")
+        sys.exit("Использование: python generate_sounds.py <каталог вывода> [--demo <каталог демо>]")
     out = args[0]
+    if demo_dir is not None and os.path.abspath(demo_dir) == os.path.abspath(out):
+        sys.exit("Каталог демо-файлов должен отличаться от каталога вывода.")
 
     os.makedirs(out, exist_ok=True)
+    if demo_dir is not None:
+        os.makedirs(demo_dir, exist_ok=True)
     for name, sounds in SETS.items():
         folder = os.path.join(out, name)
         os.makedirs(folder, exist_ok=True)
@@ -216,8 +229,8 @@ def main():
             x = finish(sounds[kind](), PEAK[kind])
             wavfile.write(os.path.join(folder, f"{kind}.wav"), SR, (x * 32767).astype(np.int16))
             demo += [x, np.zeros(int(SR * 0.9))]
-        if demo_enabled:
-            wavfile.write(os.path.join(out, f"{name}-demo.wav"), SR, (np.concatenate(demo) * 32767).astype(np.int16))
+        if demo_dir is not None:
+            wavfile.write(os.path.join(demo_dir, f"{name}-demo.wav"), SR, (np.concatenate(demo) * 32767).astype(np.int16))
     print("ok")
 
 
