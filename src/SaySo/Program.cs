@@ -16,7 +16,7 @@ public static class Program
             LaunchMode.Settings => RunSettings(),
             LaunchMode.InstallAdminTask => InstallAdminTask(),
             LaunchMode.RemoveAdminTask => RemoveAdminTask(),
-            LaunchMode.Simulate => 2, // задача 16
+            LaunchMode.Simulate => Daemon.SimulationRunner.Run(options),
             // Демон никогда не касается типов XAML — иначе в процесс загрузится Microsoft.UI.Xaml.dll.
             _ => Daemon.DaemonHost.Run(),
         };
