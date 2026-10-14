@@ -74,7 +74,7 @@ internal sealed unsafe class TrayIcon(nint hwnd, uint callbackMessage) : IDispos
             uCallbackMessage = callbackMessage,
             hIcon = _icon,
         };
-        var tip = _tooltip.Length > 127 ? _tooltip[..127] : _tooltip;
+        var tip = TrayTooltip.Fit(_tooltip);
         tip.AsSpan().CopyTo(new Span<char>(data.szTip, 128));
         return data;
     }

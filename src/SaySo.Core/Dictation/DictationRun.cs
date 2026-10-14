@@ -1,5 +1,6 @@
 using SaySo.Core.Audio;
 using SaySo.Core.Engines;
+using SaySo.Core.Overlay;
 
 namespace SaySo.Core.Dictation;
 
@@ -139,9 +140,8 @@ public sealed class DictationRun : IAsyncDisposable
             }
 
             var primaryError = _primaryError ?? EngineErrorKind.NotConfigured;
-            var primaryMessage = ErrorMessages.Describe(primaryError, "Gemini");
             var fallback = _engines.Fallback
-                ?? throw new DictationFailedException(primaryError, null, primaryMessage);
+                ?? throw new DictationFailedException(primaryError, null, OverlayMessages.NoFallback(primaryError));
 
             byte[] wav;
             lock (_gate)
@@ -156,8 +156,7 @@ public sealed class DictationRun : IAsyncDisposable
             }
             catch (TranscriptionException e)
             {
-                throw new DictationFailedException(primaryError, e.Kind,
-                    primaryMessage + "; " + ErrorMessages.Describe(e.Kind, "Groq"));
+                throw new DictationFailedException(primaryError, e.Kind, OverlayMessages.BothFailed(primaryError, e.Kind));
             }
         }
         finally

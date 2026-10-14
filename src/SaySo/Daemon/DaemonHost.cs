@@ -53,6 +53,7 @@ internal sealed class DaemonHost : IDisposable
     private nint _dictationTarget;
     private bool _quitAfterSession;
     private IDisposable? _quitTimer;
+    private string? _lastErrorDetail;
 
     private DaemonHost(AppPaths paths, SettingsStore settingsStore, AppSettings settings)
     {
@@ -575,8 +576,8 @@ internal sealed class DaemonHost : IDisposable
         {
             // Синхронная часть отмены гасит плашку и значок; ошибку показываем сразу после неё, не дожидаясь закрытия сессии движка.
             var cancel = _dictation.HandleAsync(HotkeyAction.Cancel);
-            _overlay.ShowMessage("Не удалось запустить запись — подробности в журнале", OverlayTone.Error);
-            UpdateTray(TrayState.Error);
+            _overlay.ShowMessage(OverlayMessages.StartFailed, OverlayTone.Error);
+            UpdateTray(TrayState.Error, OverlayMessages.StartFailed);
             if (_settings.SoundsEnabled)
             {
                 SoundPlayer.Play(SoundKind.Error);
@@ -713,8 +714,8 @@ internal sealed class DaemonHost : IDisposable
     private TrayState RestingTrayState => _paused ? TrayState.Paused : TrayState.Idle;
 
     // Координатор сообщает «Idle» после каждой сессии; при ручной паузе значок остаётся «приостановлено».
-    private void OnDictationTray(TrayState state) =>
-        UpdateTray(state == TrayState.Idle && _paused ? TrayState.Paused : state);
+    private void OnDictationTray(TrayState state, string? detail) =>
+        UpdateTray(state == TrayState.Idle && _paused ? TrayState.Paused : state, detail);
 
     private void ScheduleTrim(TimeSpan delay)
     {
@@ -736,14 +737,19 @@ internal sealed class DaemonHost : IDisposable
         }
     }
 
-    private void UpdateTray(TrayState state)
+    private void UpdateTray(TrayState state, string? errorDetail = null)
     {
         _trayState = state;
+        if (state == TrayState.Error && errorDetail is not null)
+        {
+            _lastErrorDetail = errorDetail; // RefreshIcons перерисовывает значок без текста: берём запомненный
+        }
+
         var tooltip = state switch
         {
             TrayState.Paused => "SaySo — приостановлено",
             TrayState.Recording => "SaySo — запись…",
-            TrayState.Error => "SaySo — последняя диктовка не удалась (подробности в настройках → История)",
+            TrayState.Error => TrayTooltip.ForError(_lastErrorDetail),
             _ => $"SaySo — удерживайте {HotkeyFormatter.Format(_settings.Hotkey.Keys)}",
         };
         _tray.Set(_icons.Get(state), tooltip);

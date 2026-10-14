@@ -1,3 +1,5 @@
+using SaySo.Core.Overlay;
+
 namespace SaySo.Core.Audio.Wasapi;
 
 public enum MicrophoneErrorKind
@@ -9,22 +11,21 @@ public enum MicrophoneErrorKind
     Other,
 }
 
-/// <summary>Ошибка микрофона; <see cref="UserMessage"/> — для оверлея и настроек.</summary>
+/// <summary>
+/// Ошибка микрофона. <see cref="UserMessage"/> — короткий текст для плашки оверлея, <see cref="Detail"/> — полный
+/// (подсказка трея и страница «Микрофон»).
+/// </summary>
 public sealed class MicrophoneException(MicrophoneErrorKind kind, int nativeError, string message) : Exception(message)
 {
     public MicrophoneErrorKind Kind { get; } = kind;
 
     public int NativeError { get; } = nativeError;
 
-    public string UserMessage => Kind switch
-    {
-        MicrophoneErrorKind.AccessDenied =>
-            "Нет доступа к микрофону: Параметры → Конфиденциальность и защита → Микрофон → разрешите доступ классическим приложениям.",
-        MicrophoneErrorKind.NotFound => "Микрофон не найден.",
-        MicrophoneErrorKind.DeviceLost => "Микрофон отключился во время записи.",
-        MicrophoneErrorKind.InUse => "Микрофон занят другим приложением.",
-        _ => $"Ошибка микрофона (0x{NativeError:X8}).",
-    };
+    public string UserMessage => Text.Short;
+
+    public string Detail => Text.Detail;
+
+    private FailureText Text => OverlayMessages.Microphone(Kind, NativeError);
 
     public static MicrophoneException FromHResult(int hr, string operation)
     {

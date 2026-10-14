@@ -132,7 +132,8 @@ public sealed class DictationCoordinatorTests : IDisposable
 
         Assert.Equal(DictationState.Idle, coordinator.State);
         Assert.StartsWith("message:Error:", _overlay.Calls.Single());
-        Assert.Contains("Конфиденциальность", _overlay.Calls.Single());
+        Assert.Contains("Параметры", _overlay.Calls.Single());
+        Assert.Contains("Конфиденциальность", _feedback.TrayDetails[^1]); // полный путь — в подсказке значка
         Assert.Equal([SoundKind.Error], _feedback.Sounds);
         Assert.Equal(TrayState.Error, _feedback.Tray[^1]);
         Assert.Equal(1, _resets);
@@ -173,6 +174,41 @@ public sealed class DictationCoordinatorTests : IDisposable
     }
 
     [Fact]
+    public async Task GroqOnlyMode_FallbackText_ShowsNoReservePlaque()
+    {
+        // Ключа Gemini нет — осознанная настройка «только Groq»: после каждой диктовки плашку не показываем.
+        _primary.Factory = _ => throw new TranscriptionException(EngineErrorKind.NotConfigured, "нет ключа");
+        var c = Create();
+        await c.HandleAsync(HotkeyAction.StartRecording);
+        _scheduler.Fire(DictationCoordinator.EngineStartDelay);
+        _sources[0].Push(TestAudio.Speech(1000));
+        await c.HandleAsync(HotkeyAction.StopRecording);
+
+        Assert.Equal(["резервный текст"], _output.Texts);
+        Assert.DoesNotContain(_overlay.Calls, x => x.StartsWith("message:", StringComparison.Ordinal));
+        Assert.Equal("hide", _overlay.Calls[^1]);
+        Assert.Equal(SoundKind.Stop, _feedback.Sounds[^1]);
+    }
+
+    [Fact]
+    public async Task BothEnginesFail_ShortTextOnOverlay_FullTextInTrayDetail()
+    {
+        _primary.Factory = attempt => attempt == 0
+            ? Fail.Session(EngineErrorKind.Network)
+            : throw new TranscriptionException(EngineErrorKind.Network, "все ключи на паузе");
+        _fallback.Handler = _ => Fail.With(EngineErrorKind.RegionBlocked);
+        var c = Create();
+        await c.HandleAsync(HotkeyAction.StartRecording);
+        _scheduler.Fire(DictationCoordinator.EngineStartDelay);
+        _sources[0].Push(TestAudio.Speech(1000));
+        await c.HandleAsync(HotkeyAction.StopRecording);
+
+        Assert.Equal("message:Error:Gemini и Groq недоступны — подробности в трее", _overlay.Calls[^1]);
+        Assert.Equal(TrayState.Error, _feedback.Tray[^1]);
+        Assert.Equal("Gemini: нет связи с сервером; Groq: недоступен в вашем регионе — проверьте VPN", _feedback.TrayDetails[^1]);
+    }
+
+    [Fact]
     public async Task BothEnginesFail_ShowsError()
     {
         _primary.Factory = attempt => attempt == 0
@@ -192,10 +228,10 @@ public sealed class DictationCoordinatorTests : IDisposable
     }
 
     [Theory]
-    [InlineData(InsertOutcome.BlockedByElevation, "администратора")]
+    [InlineData(InsertOutcome.BlockedByElevation, "Админ-окно")]
     [InlineData(InsertOutcome.ClipboardUnavailable, "Буфер обмена занят")]
     [InlineData(InsertOutcome.NoTarget, "Нет активного окна")]
-    [InlineData(InsertOutcome.InputBlocked, "Не удалось нажать Ctrl+V")]
+    [InlineData(InsertOutcome.InputBlocked, "Не вставилось")]
     public async Task InsertProblems_AreExplained_TextStaysInHistory(InsertOutcome outcome, string fragment)
     {
         _output.Outcome = outcome;

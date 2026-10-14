@@ -65,7 +65,7 @@ public sealed class DictationCoordinator(
         var run = pipeline.Begin();
         _run = run;
         IAudioSource? source = null;
-        string? failure = null;
+        FailureText? failure = null;
         try
         {
             source = audio(run.PushAudio, e => postToMain(() => OnMicrophoneError(run, e)));
@@ -75,12 +75,12 @@ public sealed class DictationCoordinator(
         catch (MicrophoneException e)
         {
             Log.Info($"Микрофон: {e.Kind} (0x{e.NativeError:X8})");
-            failure = e.UserMessage;
+            failure = new FailureText(e.UserMessage, e.Detail);
         }
         catch (Exception e)
         {
             Log.Error("Запуск записи", e);
-            failure = "Не удалось начать запись — подробности в журнале";
+            failure = FailureText.Same(OverlayMessages.StartFailed);
         }
 
         if (failure is not null)
@@ -91,7 +91,7 @@ public sealed class DictationCoordinator(
                 _source = null;
                 _run = null;
                 State = DictationState.Idle;
-                Fail(failure);
+                Fail(failure.Value);
                 resetHotkey();
             }
 
@@ -176,44 +176,34 @@ public sealed class DictationCoordinator(
 
             var outcome = await output.InsertAsync(result.Text, settings().Hotkey.Keys);
             Log.Info($"Диктовка: движок={result.Engine}, вставка={outcome}, символов={result.Text.Length}");
-            switch (outcome)
+            if (OverlayMessages.ForInsertOutcome(outcome) is { } insertProblem)
             {
-                case InsertOutcome.Inserted:
-                    PlaySound(SoundKind.Stop);
-                    if (result.PrimaryError is { } primaryError)
-                    {
-                        overlay.ShowMessage("Резерв Groq — " + ErrorMessages.Describe(primaryError, "Gemini"), OverlayTone.Info);
-                    }
-                    else
-                    {
-                        overlay.Hide();
-                    }
-
-                    break;
-                case InsertOutcome.BlockedByElevation:
-                    failed = Fail("Окно запущено от администратора — текст в буфере обмена, вставьте Ctrl+V");
-                    break;
-                case InsertOutcome.ClipboardUnavailable:
-                    failed = Fail("Буфер обмена занят — текст сохранён в истории");
-                    break;
-                case InsertOutcome.NoTarget:
-                    failed = Fail("Нет активного окна — текст сохранён в истории");
-                    break;
-                case InsertOutcome.InputBlocked:
-                    failed = Fail("Не удалось нажать Ctrl+V — текст в буфере обмена, вставьте вручную");
-                    break;
+                failed = Fail(FailureText.Same(insertProblem));
+            }
+            else
+            {
+                PlaySound(SoundKind.Stop);
+                // «Только Groq» (ключа Gemini нет) — осознанная настройка: плашка о резерве шумела бы на каждой диктовке.
+                if (result.PrimaryError is { } primaryError and not EngineErrorKind.NotConfigured)
+                {
+                    overlay.ShowMessage(OverlayMessages.FallbackUsed(primaryError), OverlayTone.Info);
+                }
+                else
+                {
+                    overlay.Hide();
+                }
             }
         }
         catch (DictationFailedException e)
         {
             Log.Info($"Диктовка не удалась: основной={e.PrimaryError}, резерв={e.FallbackError}");
-            failed = Fail(e.UserMessage);
+            failed = Fail(new FailureText(e.UserMessage, e.Detail));
         }
         catch (Exception e)
         {
             // Неожиданный сбой (вставка, оверлей, движок): сессия всё равно должна закрыться, а не зависнуть.
             Log.Error("Диктовка", e);
-            failed = Fail("Ошибка диктовки — подробности в журнале");
+            failed = Fail(FailureText.Same(OverlayMessages.DictationError));
             await DisposeRunAsync(run);
         }
         finally
@@ -301,11 +291,11 @@ public sealed class DictationCoordinator(
         }
     }
 
-    private bool Fail(string message)
+    private bool Fail(FailureText message)
     {
-        overlay.ShowMessage(message, OverlayTone.Error);
+        overlay.ShowMessage(message.Short, OverlayTone.Error);
         PlaySound(SoundKind.Error);
-        feedback.SetTray(TrayState.Error);
+        feedback.SetTray(TrayState.Error, message.Detail);
         return true;
     }
 

@@ -205,6 +205,34 @@ public class DictationPipelineTests
         var ex = await Assert.ThrowsAsync<DictationFailedException>(() => run.FinishAsync(TestContext.Current.CancellationToken));
         Assert.Equal(EngineErrorKind.AuthFailed, ex.PrimaryError);
         Assert.Contains("Gemini", ex.UserMessage);
+        Assert.EndsWith("резерв не настроен", ex.UserMessage); // подсказка, что резерв помог бы
+        Assert.EndsWith("резерв не настроен", ex.Detail);
+    }
+
+    [Fact]
+    public async Task NoGeminiKey_NoFallback_JustSaysNoKey()
+    {
+        var (p, primary, _) = Create(withFallback: false);
+        primary.Factory = _ => throw new TranscriptionException(EngineErrorKind.NotConfigured, "нет ключа");
+        await using var run = p.Begin();
+        run.StartPrimary();
+        run.PushAudio(Speech(1000));
+        var ex = await Assert.ThrowsAsync<DictationFailedException>(() => run.FinishAsync(TestContext.Current.CancellationToken));
+        Assert.Equal("Gemini: не задан ключ API", ex.UserMessage);
+    }
+
+    [Fact]
+    public async Task GroqOnly_GroqFails_DoesNotMentionGemini()
+    {
+        var (p, primary, fallback) = Create();
+        primary.Factory = _ => throw new TranscriptionException(EngineErrorKind.NotConfigured, "нет ключа");
+        fallback.Handler = _ => Fail.With(EngineErrorKind.Network);
+        await using var run = p.Begin();
+        run.StartPrimary();
+        run.PushAudio(Speech(1000));
+        var ex = await Assert.ThrowsAsync<DictationFailedException>(() => run.FinishAsync(TestContext.Current.CancellationToken));
+        Assert.Equal("Groq: нет связи с сервером", ex.UserMessage);
+        Assert.DoesNotContain("Gemini", ex.Detail);
     }
 
     [Fact]
@@ -217,8 +245,8 @@ public class DictationPipelineTests
         run.StartPrimary();
         run.PushAudio(Speech(1000));
         var ex = await Assert.ThrowsAsync<DictationFailedException>(() => run.FinishAsync(TestContext.Current.CancellationToken));
-        Assert.Contains("Gemini", ex.UserMessage);
-        Assert.Contains("Groq", ex.UserMessage);
+        Assert.Equal("Gemini и Groq недоступны — подробности в трее", ex.UserMessage);
+        Assert.Equal("Gemini: нет связи с сервером; Groq: ключ API недействителен", ex.Detail); // полный текст — для подсказки трея
         Assert.Equal(EngineErrorKind.AuthFailed, ex.FallbackError);
     }
 

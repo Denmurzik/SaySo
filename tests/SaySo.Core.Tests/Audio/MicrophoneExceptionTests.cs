@@ -19,6 +19,11 @@ public class MicrophoneExceptionTests
     }
 
     [Fact]
-    public void AccessDenied_MessageExplainsPrivacySetting() =>
-        Assert.Contains("Конфиденциальность", MicrophoneException.FromHResult(unchecked((int)0x80070005), "x").UserMessage);
+    public void AccessDenied_ShortMessagePointsToSettings_DetailExplainsPrivacyPath()
+    {
+        var e = MicrophoneException.FromHResult(unchecked((int)0x80070005), "x");
+
+        Assert.Contains("Параметры", e.UserMessage);
+        Assert.Contains("Конфиденциальность", e.Detail);
+    }
 }
