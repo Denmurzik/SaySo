@@ -18,16 +18,25 @@ if (-not $targetExists) { Write-Host "Папка '$Target' не найдена �
 
 $exe = Join-Path $Target 'SaySo.exe'
 $prefix = $Target.TrimEnd('\') + '\'
-if ($PSCmdlet.ShouldProcess($Target, 'Остановить SaySo')) { Stop-TargetProcesses $Target }
+if ($targetExists -and $PSCmdlet.ShouldProcess($Target, 'Остановить SaySo')) { Stop-TargetProcesses $Target }
 
 # Задача Планировщика: удаляем, только если она запускает SaySo из этой папки.
 # Если задачи нет, schtasks пишет в stderr; при ErrorActionPreference=Stop Windows PowerShell 5.1 счёл бы это ошибкой.
 $ErrorActionPreference = 'Continue'
-$taskXml = (& schtasks.exe /Query /TN SaySo /XML 2>$null) -join "`n"
+& schtasks.exe /Query /TN SaySo *> $null
 $taskExists = $LASTEXITCODE -eq 0
+$taskXml = $null
+$xmlReadable = $false
+if ($taskExists) {
+    $taskXml = (& schtasks.exe /Query /TN SaySo /XML 2>$null) -join "`n"
+    $xmlReadable = $LASTEXITCODE -eq 0
+}
 $ErrorActionPreference = 'Stop'
 if ($taskExists) {
-    if ($taskXml.IndexOf($exe, [StringComparison]::OrdinalIgnoreCase) -lt 0) {
+    if (-not $xmlReadable) {
+        Write-Warning 'Задача Планировщика SaySo найдена, но прочитать её описание (schtasks /Query /XML) не удалось — не могу проверить, что она относится к этой установке, поэтому оставлена. Удалите вручную при необходимости: schtasks /Delete /TN SaySo /F (от администратора).'
+    }
+    elseif ($taskXml.IndexOf($exe, [StringComparison]::OrdinalIgnoreCase) -lt 0) {
         Write-Warning 'Задача Планировщика SaySo относится к другой установке — оставлена.'
     }
     elseif ($PSCmdlet.ShouldProcess('Задача Планировщика SaySo', 'Удалить')) {

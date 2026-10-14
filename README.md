@@ -20,7 +20,7 @@
 - **Tiny in the background.** A NativeAOT daemon that never loads XAML: **{idleWs} MB** working set at idle (**{idlePrivate} MB** private). The WinUI 3 settings window is a separate process that fully exits when you close it.
 - **Never loses what you said.** Add several Gemini keys and SaySo switches to the next one the moment a key hits its quota — even mid-sentence, re-sending what was already recorded. No keys left or network down? The recording goes to **Groq Whisper** with LLM cleanup instead.
 - **Works everywhere.** Pastes into whatever app is focused; your clipboard text is restored and dictations are kept out of Win+V history.
-- **Private by default.** Audio never touches the disk. API keys and history are encrypted with Windows DPAPI. Data flow: audio is streamed to Google Gemini (and to Groq if the fallback is used); nothing else leaves your PC.
+- **Private by default.** Audio never touches the disk. API keys and history are encrypted with Windows DPAPI. Data flow: audio and your vocabulary terms go to Google Gemini; if the fallback kicks in, audio and the transcript go to Groq; checking API keys also calls these APIs.
 
 ## How it works
 
@@ -65,6 +65,18 @@ Uninstall: `powershell -ExecutionPolicy Bypass -File .\uninstall.ps1` (add `-Rem
 Paste the keys into *Settings → Recognition* (you can add several Gemini keys) and press *Check keys*.
 
 Windows must allow desktop apps to use the microphone: *Settings → Privacy & security → Microphone*.
+
+## Settings
+
+Open them from the tray icon (double-click, or right-click → *Settings…*). The window is titled “SaySo” and has a side menu that is always open: General, Recognition, Dictionary, Microphone, History, About. The window is a separate process: closing it ends it.
+
+### Microphone
+
+SaySo remembers the microphone you pick. A chosen headset is used automatically whenever it is connected again: it is matched by device Id, and by name if Windows gave it a new Id after you plugged it into another USB port. While it is unplugged, dictation uses the Windows default microphone. An explicitly chosen built-in microphone stays selected even when a headset is connected. *Same as Windows (default)* always follows the Windows default device.
+
+### Admin mode (optional)
+
+Windows does not let a normal app paste into windows running as administrator (elevated terminals, some IDEs): SaySo leaves the text on the clipboard and says so on the overlay. *General → Run as administrator* lifts this: SaySo is then started at logon by a Task Scheduler task with the highest privileges (one UAC prompt when you switch it on). Admin mode launches `SaySo.exe` elevated from its install folder, which is writable by programs running under your account — enable it only if you trust the software on this PC.
 
 ## Memory footprint
 
