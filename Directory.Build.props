@@ -1,0 +1,11 @@
+<Project>
+  <PropertyGroup>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Product>SaySo</Product>
+    <Authors>Denis Muruev</Authors>
+    <Copyright>© 2026 Denis Muruev</Copyright>
+    <Version>0.1.0</Version>
+  </PropertyGroup>
+</Project>

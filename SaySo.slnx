@@ -1,0 +1,14 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/SaySo.Core/SaySo.Core.csproj" />
+    <Project Path="src/SaySo/SaySo.csproj">
+      <Platform Project="x64" />
+    </Project>
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/SaySo.Core.Tests/SaySo.Core.Tests.csproj" />
+  </Folder>
+  <Folder Name="/tools/">
+    <Project Path="tools/SaySo.Probe/SaySo.Probe.csproj" />
+  </Folder>
+</Solution>
