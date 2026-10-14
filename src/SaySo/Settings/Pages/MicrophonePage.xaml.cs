@@ -61,6 +61,14 @@ public sealed partial class MicrophonePage : UserControl
         {
             case MicrophoneMatch.ById or MicrophoneMatch.ByName:
                 selected = devices.ToList().FindIndex(d => d.Id == resolution.Endpoint!.Id) + 1;
+                if (resolution.Match == MicrophoneMatch.ById && string.IsNullOrWhiteSpace(settings.MicrophoneDeviceName))
+                {
+                    // Настройки до появления имени: дописываем его для того же устройства (выбор не меняется);
+                    // при неудаче записи модель останется «грязной» и сохранится при закрытии окна.
+                    settings.MicrophoneDeviceName = resolution.Endpoint!.Name;
+                    _model.SaveSettings();
+                }
+
                 break;
             case MicrophoneMatch.Fallback:
                 DevicesBox.Items.Add(new ComboBoxItem

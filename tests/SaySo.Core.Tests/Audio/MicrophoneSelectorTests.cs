@@ -120,11 +120,13 @@ public class MicrophoneSelectorTests
     }
 
     [Fact]
-    public void SeveralActiveWithSameName_FirstWins()
+    public void SeveralActiveWithSameName_PicksOneOfThem()
     {
+        // Какое из одноимённых — не гарантируется (порядок перечисления Windows не определён), важно лишь найти одно из них.
         var r = MicrophoneSelector.Resolve("old", "Гарнитура", [Active("n1", "Гарнитура"), Active("n2", "Гарнитура")]);
 
-        Assert.Equal("n1", r.Endpoint!.Id);
+        Assert.Equal(MicrophoneMatch.ByName, r.Match);
+        Assert.Contains(r.Endpoint!.Id, new[] { "n1", "n2" });
     }
 
     [Theory]
@@ -137,6 +139,52 @@ public class MicrophoneSelectorTests
 
         Assert.Equal(MicrophoneMatch.ByName, r.Match);
         Assert.Equal("new", r.Endpoint!.Id);
+    }
+
+    [Fact]
+    public void ExactName_WinsOverNormalizedMatch_EvenWhenListedLater()
+    {
+        // Два одинаковых USB-устройства: «N- » — то, чем Windows их различает.
+        var r = MicrophoneSelector.Resolve("old", "Микрофон (USB Audio)", [Active("n1", "Микрофон (2- USB Audio)"), Active("n2", "Микрофон (USB Audio)")]);
+
+        Assert.Equal(MicrophoneMatch.ByName, r.Match);
+        Assert.Equal("n2", r.Endpoint!.Id);
+    }
+
+    [Fact]
+    public void ExactNameWithPortNumber_WinsOverNormalizedMatch_EvenWhenListedLater()
+    {
+        var r = MicrophoneSelector.Resolve("old", "Микрофон (2- USB Audio)", [Active("n1", "Микрофон (USB Audio)"), Active("n2", "Микрофон (2- USB Audio)")]);
+
+        Assert.Equal("n2", r.Endpoint!.Id);
+    }
+
+    [Fact]
+    public void NoExactName_FallsBackToNormalizedMatch()
+    {
+        var r = MicrophoneSelector.Resolve("old", "Микрофон (USB Audio)", [Active("n1", "Микрофон (Realtek Audio)"), Active("n2", "Микрофон (3- USB Audio)")]);
+
+        Assert.Equal(MicrophoneMatch.ByName, r.Match);
+        Assert.Equal("n2", r.Endpoint!.Id);
+    }
+
+    [Fact]
+    public void MultiDigitPortNumber_IsIgnored()
+    {
+        var r = MicrophoneSelector.Resolve("old", "Микрофон (USB Audio)", [Active("new", "Микрофон (12- USB Audio)")]);
+
+        Assert.Equal(MicrophoneMatch.ByName, r.Match);
+        Assert.Equal("new", r.Endpoint!.Id);
+        Assert.Equal("Микрофон (USB Audio)", MicrophoneSelector.NormalizeName("Микрофон (12- USB Audio)"));
+    }
+
+    [Fact]
+    public void BluetoothHeadsetAndHeadphones_AreNotMerged()
+    {
+        // Одно физическое устройство Bluetooth даёт две конечные точки с разными именами — это разные выборы.
+        var r = MicrophoneSelector.Resolve("old", "Headset (Jabra Evolve Hands-Free AG Audio)", [Active("stereo", "Headphones (Jabra Evolve Stereo)")]);
+
+        Assert.Equal(MicrophoneMatch.Fallback, r.Match);
     }
 
     [Theory]

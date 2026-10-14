@@ -28,8 +28,8 @@ public static class MicrophoneSelector
     public static MicrophoneResolution Resolve(string? savedId, string? savedName, IEnumerable<CaptureEndpoint> endpoints)
     {
         var hasId = !string.IsNullOrWhiteSpace(savedId);
-        var wantedName = NormalizeName(savedName);
-        if (!hasId && wantedName.Length == 0)
+        var exactName = savedName?.Trim() ?? "";
+        if (!hasId && exactName.Length == 0)
         {
             return new MicrophoneResolution(MicrophoneMatch.NotRequested, null);
         }
@@ -40,10 +40,20 @@ public static class MicrophoneSelector
             return new MicrophoneResolution(MicrophoneMatch.ById, byId);
         }
 
-        if (wantedName.Length > 0
-            && active.FirstOrDefault(e => string.Equals(NormalizeName(e.Name), wantedName, StringComparison.OrdinalIgnoreCase)) is { } byName)
+        if (exactName.Length > 0)
         {
-            return new MicrophoneResolution(MicrophoneMatch.ByName, byName);
+            // Сначала точное имя: «N- » перед названием — как раз то, чем Windows различает два одинаковых устройства,
+            // поэтому совпадение «с точностью до номера порта» не должно перебить настоящее.
+            if (active.FirstOrDefault(e => string.Equals(e.Name.Trim(), exactName, StringComparison.OrdinalIgnoreCase)) is { } exact)
+            {
+                return new MicrophoneResolution(MicrophoneMatch.ByName, exact);
+            }
+
+            var wantedName = NormalizeName(exactName);
+            if (active.FirstOrDefault(e => string.Equals(NormalizeName(e.Name), wantedName, StringComparison.OrdinalIgnoreCase)) is { } byName)
+            {
+                return new MicrophoneResolution(MicrophoneMatch.ByName, byName);
+            }
         }
 
         return new MicrophoneResolution(MicrophoneMatch.Fallback, null);
@@ -52,6 +62,8 @@ public static class MicrophoneSelector
     /// <summary>
     /// Имя для сравнения: без пробелов по краям и без номера порта, который Windows добавляет внутри скобок
     /// при подключении того же USB-устройства в другой порт («Микрофон (2- USB Audio)» → «Микрофон (USB Audio)»).
+    /// Предполагается, что префикс «N- » стоит сразу после ПЕРВОЙ открывающей скобки; имена с другой структурой
+    /// («Микрофон (Realtek(R) Audio)», «Headset (1-й вход)») остаются как есть.
     /// </summary>
     public static string NormalizeName(string? name)
     {

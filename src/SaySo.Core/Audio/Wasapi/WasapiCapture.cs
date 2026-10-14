@@ -223,7 +223,9 @@ public sealed unsafe class WasapiCapture : IDisposable
                 return device;
             }
 
-            Log.Info("Выбранный микрофон недоступен — используется микрофон по умолчанию");
+            Log.Info(string.IsNullOrWhiteSpace(deviceName)
+                ? "Выбранный микрофон недоступен — используется микрофон по умолчанию"
+                : $"Выбранный микрофон недоступен — используется микрофон по умолчанию (сохранён: «{deviceName.Trim()}»)");
         }
 
         WasapiDevices.Check(enumerator->GetDefaultAudioEndpointHr(EDataFlow.eCapture, ERole.eConsole, &device), "GetDefaultAudioEndpoint");
