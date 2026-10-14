@@ -81,6 +81,12 @@ russian.ShortcutComment=SaySo — голосовая диктовка
 english.ShortcutComment=SaySo — voice dictation
 russian.StopFailed=Не удалось закрыть работающий SaySo (возможно, он запущен с правами администратора). Закройте его (значок в трее → «Выход») и повторите установку.
 english.StopFailed=Could not close the running SaySo (it may be running as administrator). Close it (tray icon → Exit) and run the setup again.
+russian.StopTitle=Закрытие SaySo
+english.StopTitle=Closing SaySo
+russian.StopDescription=Подождите, пока работающий SaySo завершит работу.
+english.StopDescription=Please wait while the running SaySo exits.
+russian.UninstallStopFailed=Не удалось закрыть работающий SaySo (возможно, он запущен с правами администратора или в сеансе другого пользователя). Часть файлов в папке «%1» может остаться: закройте SaySo и удалите папку вручную, после перезагрузки это тоже получится.
+english.UninstallStopFailed=Could not close the running SaySo (it may be running as administrator or in another user's session). Some files in "%1" may remain: close SaySo and delete the folder manually; a restart also helps.
 russian.DeleteData=Удалить также настройки, ключи и историю (%LOCALAPPDATA%\SaySo)?
 english.DeleteData=Also delete settings, keys and history (%LOCALAPPDATA%\SaySo)?
 russian.TaskElevate=Автозапуск от имени администратора (задача Планировщика «SaySo») можно удалить только с правами администратора.%n%nУдалить её сейчас? Появится запрос UAC.
@@ -153,6 +159,11 @@ function RegisterWindowMessageW(lpString: String): LongWord;
 function PostMessageW(hWnd, Msg: LongWord; wParam, lParam: LongInt): LongInt;
   external 'PostMessageW@user32.dll stdcall';
 
+var
+  InstallSucceeded: Boolean;
+  StopPage: TOutputMarqueeProgressWizardPage;
+  StopPageShown: Boolean;
+
 // Ключ /UPDATE без значения {param:…} не читает — ищем его сами.
 function IsUpdateMode: Boolean;
 var
@@ -205,7 +216,9 @@ begin
     Result := Mine = Theirs;
 end;
 
-// Процесс принадлежит установке, если лежит в её папке; путь недоступен — считаем кандидатом (как Get-TargetProcesses в install.ps1).
+// Процесс принадлежит установке, только если его образ лежит в её папке. Путь, который не удалось прочитать, — не «наш»:
+// такому процессу не шлём Quit, его не считаем и не завершаем. Для элевированного демона того же пользователя путь читается
+// (PROCESS_QUERY_LIMITED_INFORMATION разрешён и к процессам с более высоким уровнем целостности), так что он остаётся «нашим».
 function BelongsToInstall(Pid: LongWord; const AppDir: String): Boolean;
 var
   Path: String;
@@ -214,7 +227,7 @@ begin
   if not IsSameSession(Pid) then
     Exit;
   Path := GetProcessImagePath(Pid);
-  Result := (Path = '') or IsInsideDir(Path, AppDir);
+  Result := (Path <> '') and IsInsideDir(Path, AppDir);
 end;
 
 // Считает процессы SaySo.exe из папки установки; Kill = True — завершает их принудительно.
@@ -304,6 +317,35 @@ begin
   until Window = 0;
 end;
 
+procedure InitializeWizard;
+begin
+  // Страница с бегущей полосой на время остановки SaySo; показывается вручную (только в установщике, в тихом режиме её нет).
+  StopPage := CreateOutputMarqueeProgressPage(CustomMessage('StopTitle'), CustomMessage('StopDescription'));
+end;
+
+procedure ShowStopPage;
+begin
+  if (StopPage = nil) or WizardSilent then
+    Exit;
+  try
+    StopPage.Show;
+    StopPageShown := True;
+  except
+    StopPageShown := False; // полоса — только удобство, установке она не нужна
+  end;
+end;
+
+procedure HideStopPage;
+begin
+  if not StopPageShown then
+    Exit;
+  StopPageShown := False;
+  try
+    StopPage.Hide;
+  except
+  end;
+end;
+
 function WaitForAppExit(const AppDir: String; TimeoutMs: Integer): Boolean;
 var
   Waited: Integer;
@@ -313,6 +355,8 @@ begin
   begin
     Sleep(PollMs);
     Waited := Waited + PollMs;
+    if StopPageShown then
+      StopPage.Animate; // заодно обрабатывает сообщения, окно мастера не «зависает»
   end;
   Result := CountAppProcesses(AppDir, False) = 0;
 end;
@@ -327,14 +371,19 @@ begin
     Exit;
   end;
 
-  AskAppToExit(AppDir);
-  if not WaitForAppExit(AppDir, QuitWaitMs) then
-  begin
-    Log('SaySo: не вышел за 10 с, завершаю принудительно');
-    CountAppProcesses(AppDir, True);
-    WaitForAppExit(AppDir, KillWaitMs);
+  ShowStopPage;
+  try
+    AskAppToExit(AppDir);
+    if not WaitForAppExit(AppDir, QuitWaitMs) then
+    begin
+      Log('SaySo: не вышел за 10 с, завершаю принудительно');
+      CountAppProcesses(AppDir, True);
+      WaitForAppExit(AppDir, KillWaitMs);
+    end;
+    Result := CountAppProcesses(AppDir, False) = 0;
+  finally
+    HideStopPage;
   end;
-  Result := CountAppProcesses(AppDir, False) = 0;
   if Result then
     Log('SaySo: остановлен')
   else
@@ -347,6 +396,43 @@ begin
   Result := '';
   if not StopApp(ExpandConstant('{app}')) then
     Result := CustomMessage('StopFailed');
+end;
+
+// Все шаги установки (файлы, ярлыки, реестр) прошли без ошибок; дальше ошибок отката уже не будет.
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+  if CurStep = ssPostInstall then
+    InstallSucceeded := True;
+end;
+
+// Неудачное обновление не должно оставить пользователя без SaySo: демон уже остановлен, а Inno при ошибке откатил изменения,
+// поэтому в папке установки лежит прежний SaySo.exe — запускаем его от имени исходного пользователя.
+procedure DeinitializeSetup;
+var
+  AppDir, ExePath: String;
+  ResultCode: Integer;
+begin
+  if (not IsUpdateMode) or InstallSucceeded then
+    Exit;
+  try
+    AppDir := ExpandConstant('{app}');
+    ExePath := AddBackslash(AppDir) + AppExeName;
+    if not FileExists(ExePath) then
+    begin
+      Log('Обновление не удалось, прежнего ' + ExePath + ' нет — перезапускать нечего');
+      Exit;
+    end;
+    if CountAppProcesses(AppDir, False) > 0 then
+    begin
+      Log('Обновление не удалось, но SaySo уже работает — перезапуск не нужен');
+      Exit;
+    end;
+    Log('Обновление не удалось — запускаю прежний SaySo: ' + ExePath);
+    if not ExecAsOriginalUser(ExePath, '', AppDir, SW_SHOWNORMAL, ewNoWait, ResultCode) then
+      Log('Не удалось запустить прежний SaySo (ошибка ' + IntToStr(ResultCode) + ')');
+  except
+    Log('Перезапуск прежнего SaySo после неудачного обновления не удался: ' + GetExceptionMessage);
+  end;
 end;
 
 function TaskExists: Boolean;
@@ -436,7 +522,12 @@ begin
   case CurUninstallStep of
     usUninstall:
       begin
-        StopApp(AppDir);
+        if not StopApp(AppDir) then
+        begin
+          Log('Удаление: SaySo не остановлен, файлы в ' + AppDir + ' могут остаться');
+          if not UninstallSilent then
+            SuppressibleMsgBox(FmtMessage(CustomMessage('UninstallStopFailed'), [AppDir]), mbError, MB_OK, IDOK);
+        end;
         RemoveRunValue(AppDir);
         RemoveSchedulerTask(AppDir);
       end;
