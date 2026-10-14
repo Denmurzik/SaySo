@@ -6,13 +6,19 @@ namespace SaySo.Core.Platform;
 
 /// <summary>
 /// Плашка поверх всех окон: не активируется, пропускает щелчки, рисуется через UpdateLayeredWindow
-/// с попиксельной альфой. Таймер анимации живёт только пока плашка видна.
+/// с попиксельной альфой. Таймеры (анимации и подъёма наверх) живут только пока плашка видна.
+/// Стиль WS_EX_TOPMOST лишь сажает окно в верхнюю полосу, но не держит его выше других окон этой полосы:
+/// созданное или активированное позже «всегда поверх» окно (плеер, Zoom, диспетчер задач) оказывается выше. Поэтому
+/// каждый показ и каждый тик <see cref="TopmostTimer"/> заново ставят плашку на верх полосы без активации.
+/// Выше полосы остаются окна оболочки (Пуск, всплывающие панели) и безопасный рабочий стол: без UIAccess их не перекрыть.
 /// </summary>
 internal sealed unsafe class OverlayWindow : NativeWindow, IDictationOverlay
 {
     private const nuint AnimationTimer = 1;
     private const nuint HideTimer = 2;
+    private const nuint TopmostTimer = 3;
     private const uint FrameMs = 33;
+    private const uint TopmostMs = 250; // у сообщения нет таймера анимации, поэтому подъём — отдельный и редкий
     private const uint MessageMs = 3000;
     private const float BottomMargin = 48f;
 
@@ -26,6 +32,7 @@ internal sealed unsafe class OverlayWindow : NativeWindow, IDictationOverlay
     private float _smoothed;
     private long _hideAt;
     private bool _layerFailureLogged;
+    private bool _raiseFailureLogged;
     private nint _memDc;
     private nint _dib;
     private uint* _bits;
@@ -80,6 +87,7 @@ internal sealed unsafe class OverlayWindow : NativeWindow, IDictationOverlay
         {
             Native.KillTimer(Handle, AnimationTimer);
             Native.KillTimer(Handle, HideTimer);
+            Native.KillTimer(Handle, TopmostTimer);
             if (_visible)
             {
                 Native.ShowWindow(Handle, Native.SW_HIDE);
@@ -112,6 +120,16 @@ internal sealed unsafe class OverlayWindow : NativeWindow, IDictationOverlay
                 return 0;
             }
 
+            if (wParam == TopmostTimer)
+            {
+                if (_visible)
+                {
+                    RaiseToTop();
+                }
+
+                return 0;
+            }
+
             if (wParam == HideTimer)
             {
                 if (_visible && _mode == OverlayMode.Message && Environment.TickCount64 >= _hideAt)
@@ -139,9 +157,12 @@ internal sealed unsafe class OverlayWindow : NativeWindow, IDictationOverlay
 
         if (!_visible)
         {
-            Native.ShowWindow(Handle, Native.SW_SHOWNOACTIVATE);
             _visible = true;
+            _raiseFailureLogged = false;
+            Native.SetTimer(Handle, TopmostTimer, TopmostMs, null);
         }
+
+        RaiseToTop(); // показывает окно и в каждом режиме заново ставит его над окнами, появившимися с прошлого показа
 
         if (animate)
         {
@@ -153,6 +174,17 @@ internal sealed unsafe class OverlayWindow : NativeWindow, IDictationOverlay
         }
 
         return true;
+    }
+
+    /// <summary>Показывает плашку (если скрыта) и ставит её на верх полосы «поверх всех окон»; фокус не берёт.</summary>
+    private void RaiseToTop()
+    {
+        const uint Flags = Native.SWP_NOMOVE | Native.SWP_NOSIZE | Native.SWP_NOACTIVATE | Native.SWP_NOOWNERZORDER | Native.SWP_SHOWWINDOW;
+        if (!Native.SetWindowPos(Handle, Native.HWND_TOPMOST, 0, 0, 0, 0, Flags) && !_raiseFailureLogged)
+        {
+            _raiseFailureLogged = true; // раз за показ: подъём идёт каждые 250 мс
+            PlatformLog.Info($"SetWindowPos(HWND_TOPMOST) не удался: код {System.Runtime.InteropServices.Marshal.GetLastPInvokeError()}");
+        }
     }
 
     private void Tick()
