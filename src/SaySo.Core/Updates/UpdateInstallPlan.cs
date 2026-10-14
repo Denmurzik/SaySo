@@ -15,10 +15,10 @@ public sealed record UpdateInstallPlan(UpdateInstallAction Action, bool AllUsers
     public const string UninstallerName = "unins000.exe";
     public const string SilentArguments = "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /UPDATE";
 
-    /// <summary>Для установки «для всех» Setup запускается через ShellExecute <c>runas</c> (UAC).</summary>
-    public bool Elevate => Action == UpdateInstallAction.Install && AllUsers;
-
-    /// <summary>Аргументы Setup; для <see cref="UpdateInstallAction.OpenReleasePage"/> — пусто.</summary>
+    /// <summary>
+    /// Аргументы Setup; для <see cref="UpdateInstallAction.OpenReleasePage"/> — пусто. Setup всегда запускается без повышения
+    /// прав: для <c>/ALLUSERS</c> UAC запрашивает он сам (<c>PrivilegesRequired=lowest</c>).
+    /// </summary>
     public string Arguments => Action == UpdateInstallAction.Install
         ? SilentArguments + (AllUsers ? " /ALLUSERS" : " /CURRENTUSER")
         : "";

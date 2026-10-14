@@ -89,7 +89,7 @@ internal sealed class DaemonHost : IDisposable
             action => _window.Sync.Post(_ => action(), null),
             TimeProvider.System);
         _updates = new UpdateCoordinator(
-            new DaemonUpdateHost(_window, _tray, _overlay, () => _dictation.State, RequestQuit, OnUpdateOperationFinished),
+            new DaemonUpdateHost(_window, _tray, _overlay, () => _dictation.State, OnUpdateOperationFinished),
             new UpdateStateStore(paths),
             typeof(DaemonHost).Assembly.GetName().Version ?? new Version(0, 0, 0),
             UpdateEnvironment.Current(),

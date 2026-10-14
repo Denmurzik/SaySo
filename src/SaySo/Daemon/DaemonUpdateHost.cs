@@ -13,7 +13,6 @@ internal sealed class DaemonUpdateHost(
     TrayIcon tray,
     OverlayWindow overlay,
     Func<DictationState> dictationState,
-    Action quit,
     Action finished) : IUpdateHost
 {
     public bool IsDictationIdle => dictationState() == DictationState.Idle;
@@ -44,10 +43,9 @@ internal sealed class DaemonUpdateHost(
 
     public void OpenUrl(string url) => UpdateShell.OpenUrl(url);
 
-    public InstallerLaunchResult LaunchInstaller(string path, string arguments, bool elevate) =>
-        UpdateShell.LaunchInstaller(path, arguments, elevate);
-
-    public void Quit() => quit();
+    // Setup запускается без повышения прав и ждётся асинхронно; остановит демон сам Setup — по IPC Quit (путь RequestQuit).
+    public Task<InstallerRun> RunInstallerAsync(string path, string arguments, CancellationToken ct) =>
+        UpdateShell.RunInstallerAsync(path, arguments, ct);
 
     public void OperationFinished() => finished();
 }

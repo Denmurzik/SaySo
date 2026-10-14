@@ -16,14 +16,13 @@ public sealed partial class AboutPage : UserControl
     private ReleaseInfo? _release;
     private UpdateInstallPlan? _plan;
     private bool _busy;
-    private bool _installStarted;
 
     internal AboutPage(SettingsModel model)
     {
         _model = model;
         InitializeComponent();
         var version = CurrentVersion.ToString(3);
-        VersionText.Text = $"Версия {version} · лицензия Apache-2.0";
+        VersionText.Text = $"Версия {version} · лицензия GPL-3.0-or-later";
     }
 
     private void OnOpenDataFolder(object sender, RoutedEventArgs e)
@@ -115,12 +114,13 @@ public sealed partial class AboutPage : UserControl
             return;
         }
 
-        // Демона нет: ставим сами тем же кодом. Setup закроет это окно и перезапустит SaySo.
+        // Демона нет: ставим сами тем же кодом. Setup закроет это окно и перезапустит SaySo; введённое — сохраняем заранее.
         SetBusy(true, "Скачиваю обновление…");
+        _model.Flush();
         try
         {
             using var coordinator = new UpdateCoordinator(
-                new SettingsUpdateHost(ShowInstallMessage, QuitSettings),
+                new SettingsUpdateHost(ShowInstallMessage),
                 new UpdateStateStore(_model.Paths),
                 CurrentVersion,
                 UpdateEnvironment.Current(),
@@ -137,19 +137,11 @@ public sealed partial class AboutPage : UserControl
         finally
         {
             SetBusy(false, UpdateStatus.Text);
-            InstallButton.IsEnabled = !_installStarted;
+            InstallButton.IsEnabled = true;
         }
     }
 
     private void ShowInstallMessage(string text, bool isError) => UpdateStatus.Text = text;
-
-    // Окно не закрываем сами: перед заменой файлов Setup закроет его (и перезапустит SaySo). Здесь — только сохранить введённое.
-    private void QuitSettings()
-    {
-        _installStarted = true;
-        _model.Flush();
-        UpdateStatus.Text = "Установка запущена — SaySo перезапустится";
-    }
 
     private void SetBusy(bool busy, string status)
     {
@@ -162,7 +154,7 @@ public sealed partial class AboutPage : UserControl
 }
 
 /// <summary>Координатор в окне настроек (демон не запущен): диктовки нет, таймеров и уведомлений тоже.</summary>
-internal sealed class SettingsUpdateHost(Action<string, bool> showMessage, Action quit) : IUpdateHost
+internal sealed class SettingsUpdateHost(Action<string, bool> showMessage) : IUpdateHost
 {
     public bool IsDictationIdle => true;
 
@@ -180,10 +172,8 @@ internal sealed class SettingsUpdateHost(Action<string, bool> showMessage, Actio
 
     public void OpenUrl(string url) => UpdateShell.OpenUrl(url);
 
-    public InstallerLaunchResult LaunchInstaller(string path, string arguments, bool elevate) =>
-        UpdateShell.LaunchInstaller(path, arguments, elevate);
-
-    public void Quit() => quit();
+    public Task<InstallerRun> RunInstallerAsync(string path, string arguments, CancellationToken ct) =>
+        UpdateShell.RunInstallerAsync(path, arguments, ct);
 
     public void OperationFinished()
     {

@@ -25,14 +25,16 @@ internal sealed class FakeUpdateHost : IUpdateHost
 
     public List<string> OpenedUrls { get; } = [];
 
-    public List<(string Path, string Arguments, bool Elevate)> Launches { get; } = [];
+    public List<(string Path, string Arguments)> Launches { get; } = [];
 
-    public InstallerLaunchResult LaunchResult { get; set; } = InstallerLaunchResult.Started;
+    /// <summary>Чем завершается Setup, если он не «работает» (см. <see cref="SetupRunning"/>).</summary>
+    public InstallerRun SetupRun { get; set; } = new(InstallerLaunchResult.Exited, 0);
+
+    /// <summary>Если задан, Setup «работает», пока тест не завершит задачу (как повышенная копия Setup).</summary>
+    public TaskCompletionSource<InstallerRun>? SetupRunning { get; set; }
 
     /// <summary>Содержимое установщика в момент запуска (файл сразу после запуска может быть удалён).</summary>
     public byte[]? LaunchedContent { get; private set; }
-
-    public int Quits { get; private set; }
 
     public int Finished { get; private set; }
 
@@ -58,15 +60,13 @@ internal sealed class FakeUpdateHost : IUpdateHost
 
     public void OpenUrl(string url) => OpenedUrls.Add(url);
 
-    public InstallerLaunchResult LaunchInstaller(string path, string arguments, bool elevate)
+    public Task<InstallerRun> RunInstallerAsync(string path, string arguments, CancellationToken ct)
     {
-        Launches.Add((path, arguments, elevate));
+        Launches.Add((path, arguments));
         LaunchedContent = File.ReadAllBytes(path);
         OnLaunch?.Invoke();
-        return LaunchResult;
+        return SetupRunning is { } running ? running.Task.WaitAsync(ct) : Task.FromResult(SetupRun);
     }
-
-    public void Quit() => Quits++;
 
     public void OperationFinished() => Finished++;
 
@@ -443,8 +443,10 @@ public sealed class UpdateCoordinatorTests : IDisposable
 
     // ---- установка ----
 
+    private string StagedExe => Path.Combine(_temp.Path, "SaySo-Update", "SaySo-Setup-0.2.0.exe");
+
     [Fact]
-    public async Task BalloonClick_DownloadsVerifiesLaunchesPerUserSetup_AndQuits()
+    public async Task BalloonClick_DownloadsVerifiesAndLaunchesPerUserSetup_WithoutQuitting()
     {
         ServeRelease();
         StartAndFire();
@@ -453,12 +455,11 @@ public sealed class UpdateCoordinatorTests : IDisposable
         await Coordinator.OnBalloonClickedAsync();
 
         var launch = Assert.Single(_host.Launches);
-        Assert.Equal(Path.Combine(_temp.Path, "SaySo-Update", "SaySo-Setup-0.2.0.exe"), launch.Path);
+        Assert.Equal(StagedExe, launch.Path);
         Assert.Equal("/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /UPDATE /CURRENTUSER", launch.Arguments);
-        Assert.False(launch.Elevate);
         Assert.Equal(_setup, _host.LaunchedContent);
-        Assert.Equal(1, _host.Quits);
         Assert.Contains(_host.Messages, m => m.Text == OverlayMessages.UpdateDownloading && !m.IsError);
+        Assert.Contains(_host.Messages, m => m.Text == OverlayMessages.UpdateInstalling && !m.IsError);
         Assert.Equal(1, _handler.Count(SetupUrl("0.2.0")));
     }
 
@@ -476,7 +477,7 @@ public sealed class UpdateCoordinatorTests : IDisposable
     }
 
     [Fact]
-    public async Task InstallUnderProgramFiles_IsAllUsers_WithElevation()
+    public async Task InstallUnderProgramFiles_PassesAllUsers_SetupElevatesItself()
     {
         var programFiles = Path.Combine(_temp.Path, "Program Files");
         _exePath = MakeInstall(Path.Combine(programFiles, "SaySo"));
@@ -486,45 +487,123 @@ public sealed class UpdateCoordinatorTests : IDisposable
 
         await Coordinator.InstallAsync();
 
+        // Запуск без повышения (в IUpdateHost для него нет и параметра): UAC запрашивает сам Setup.
         var launch = Assert.Single(_host.Launches);
-        Assert.True(launch.Elevate);
-        Assert.EndsWith("/UPDATE /ALLUSERS", launch.Arguments);
-        Assert.Equal(1, _host.Quits);
+        Assert.Equal("/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /UPDATE /ALLUSERS", launch.Arguments);
     }
 
     [Fact]
-    public async Task UacCancelled_ShowsMessage_KeepsRunning_AndRemovesTheDownload()
+    public async Task SetupWaitsForUac_ThenExitsNonZero_ShowsCancelled_KeepsRunning_AndRemovesTheDownload()
     {
         var programFiles = Path.Combine(_temp.Path, "Program Files");
         _exePath = MakeInstall(Path.Combine(programFiles, "SaySo"));
         _programFiles = [programFiles];
-        _host.LaunchResult = InstallerLaunchResult.Cancelled;
+        _host.SetupRun = new InstallerRun(InstallerLaunchResult.Exited, 1);
         ServeRelease();
         await Coordinator.CheckNowAsync();
 
         await Coordinator.InstallAsync();
 
-        Assert.Equal(0, _host.Quits);
         Assert.Contains(_host.Messages, m => m.Text == "Обновление отменено" && !m.IsError);
         Assert.Empty(Directory.GetFiles(Path.Combine(_temp.Path, "SaySo-Update")));
         Assert.NotNull(Coordinator.Pending); // пункт меню остаётся: можно попробовать снова
 
-        _host.LaunchResult = InstallerLaunchResult.Started;
+        _host.SetupRun = new InstallerRun(InstallerLaunchResult.Exited, 0);
         await Coordinator.InstallAsync();
-        Assert.Equal(1, _host.Quits);
+        Assert.Equal(2, _host.Launches.Count);
     }
 
     [Fact]
-    public async Task LaunchFailure_ShowsError_AndDoesNotQuit()
+    public async Task SetupFatalExitCode_ShowsInstallError()
     {
-        _host.LaunchResult = InstallerLaunchResult.Failed;
+        _host.SetupRun = new InstallerRun(InstallerLaunchResult.Exited, 4);
         ServeRelease();
         await Coordinator.CheckNowAsync();
 
         await Coordinator.InstallAsync();
 
-        Assert.Equal(0, _host.Quits);
+        Assert.Contains(_host.Messages, m => m.Text == OverlayMessages.UpdateInstallFailed && m.IsError);
+        Assert.DoesNotContain(_host.Messages, m => m.Text == OverlayMessages.UpdateCancelled);
+        Assert.Empty(Directory.GetFiles(Path.Combine(_temp.Path, "SaySo-Update")));
+    }
+
+    [Fact]
+    public async Task SetupExitsWithZeroWhileWeAreStillAlive_SaysNothing_AndKeepsTheFile()
+    {
+        ServeRelease();
+        await Coordinator.CheckNowAsync();
+
+        await Coordinator.InstallAsync();
+
+        // Повышенная копия Setup могла ещё читать файл: не удаляем.
+        Assert.True(File.Exists(StagedExe));
+        Assert.DoesNotContain(_host.Messages, m => m.IsError || m.Text == OverlayMessages.UpdateCancelled);
+    }
+
+    [Fact]
+    public async Task UacRefusedAtLaunch_ShowsCancelled_AndRemovesTheDownload()
+    {
+        _host.SetupRun = new InstallerRun(InstallerLaunchResult.Cancelled);
+        ServeRelease();
+        await Coordinator.CheckNowAsync();
+
+        await Coordinator.InstallAsync();
+
+        Assert.Contains(_host.Messages, m => m.Text == OverlayMessages.UpdateCancelled && !m.IsError);
+        Assert.Empty(Directory.GetFiles(Path.Combine(_temp.Path, "SaySo-Update")));
+    }
+
+    [Fact]
+    public async Task LaunchFailure_ShowsError()
+    {
+        _host.SetupRun = new InstallerRun(InstallerLaunchResult.Failed);
+        ServeRelease();
+        await Coordinator.CheckNowAsync();
+
+        await Coordinator.InstallAsync();
+
         Assert.Contains(_host.Messages, m => m.Text == OverlayMessages.UpdateLaunchFailed && m.IsError);
+        Assert.Empty(Directory.GetFiles(Path.Combine(_temp.Path, "SaySo-Update")));
+    }
+
+    [Fact]
+    public async Task WhileSetupRuns_FileIsGuarded_SecondRequestIgnored_AndMessageLoopIsNotBlocked()
+    {
+        _host.SetupRunning = new TaskCompletionSource<InstallerRun>();
+        ServeRelease();
+        await Coordinator.CheckNowAsync();
+
+        var install = Coordinator.InstallAsync();
+        await Settle(() => _host.Launches.Count == 1);
+
+        Assert.False(install.IsCompleted); // ждём Setup асинхронно
+        Assert.Throws<IOException>(() => File.Delete(StagedExe)); // Setup перезапускает себя с повышением: файл подменять нельзя
+        await Coordinator.InstallAsync(); // повторный щелчок
+        Assert.Single(_host.Launches);
+        Assert.Equal(1, _handler.Count(SetupUrl("0.2.0")));
+
+        _host.SetupRunning.SetResult(new InstallerRun(InstallerLaunchResult.Exited, 1));
+        await install;
+        Assert.Contains(_host.Messages, m => m.Text == OverlayMessages.UpdateCancelled);
+        Assert.False(File.Exists(StagedExe));
+    }
+
+    [Fact]
+    public async Task DaemonQuitsWhileSetupRuns_WaitIsCancelledQuietly_AndSetupFileStaysForSetup()
+    {
+        // Штатный ход: Setup останавливает демон по IPC Quit; процесс завершается, ожидание отменяется.
+        _host.SetupRunning = new TaskCompletionSource<InstallerRun>();
+        ServeRelease();
+        await Coordinator.CheckNowAsync();
+        var install = Coordinator.InstallAsync();
+        await Settle(() => _host.Launches.Count == 1);
+
+        Coordinator.Dispose();
+        await install;
+
+        Assert.DoesNotContain(_host.Messages, m => m.Text == OverlayMessages.UpdateCancelled || m.IsError);
+        Assert.True(File.Exists(StagedExe)); // файл нужен работающему Setup
+        File.SetLastWriteTimeUtc(StagedExe, DateTime.UtcNow); // страж снят: файл свободен
     }
 
     [Fact]
@@ -537,7 +616,6 @@ public sealed class UpdateCoordinatorTests : IDisposable
         await Coordinator.InstallAsync();
 
         Assert.Empty(_host.Launches);
-        Assert.Equal(0, _host.Quits);
         Assert.Contains(_host.Messages, m => m.Text == "Файл обновления не прошёл проверку" && m.IsError);
         Assert.Empty(Directory.GetFiles(Path.Combine(_temp.Path, "SaySo-Update")));
     }
@@ -580,7 +658,6 @@ public sealed class UpdateCoordinatorTests : IDisposable
         Assert.Equal("https://github.com/Denmurzik/SaySo/releases/tag/v0.2.0", Assert.Single(_host.OpenedUrls));
         Assert.Empty(_host.Launches);
         Assert.Equal(0, _handler.Count(SetupUrl("0.2.0")));
-        Assert.Equal(0, _host.Quits);
     }
 
     [Fact]
@@ -604,7 +681,6 @@ public sealed class UpdateCoordinatorTests : IDisposable
 
         Assert.Equal(1, _handler.Count(UpdateChecker.LatestReleaseUrl));
         Assert.Single(_host.Launches);
-        Assert.Equal(1, _host.Quits);
     }
 
     [Fact]
@@ -641,7 +717,7 @@ public sealed class UpdateCoordinatorTests : IDisposable
 
         _host.Idle = true;
         Coordinator.OnSessionEnded();
-        await Settle(() => _host.Quits == 1);
+        await Settle(() => _host.Launches.Count == 1 && _host.Finished > 0);
 
         Assert.Single(_host.Launches);
     }
@@ -659,17 +735,15 @@ public sealed class UpdateCoordinatorTests : IDisposable
 
         await Coordinator.InstallAsync();
         Assert.Empty(_host.Launches);
-        Assert.Equal(0, _host.Quits);
 
         await Coordinator.InstallAsync(); // повторная просьба не качает второй раз
         Assert.Equal(1, _handler.Count(SetupUrl("0.2.0")));
 
         _host.Idle = true;
         Coordinator.OnSessionEnded();
+        await Settle(() => _host.Launches.Count == 1);
 
-        Assert.Single(_host.Launches);
         Assert.Equal(_setup, _host.LaunchedContent);
-        Assert.Equal(1, _host.Quits);
     }
 
     [Fact]

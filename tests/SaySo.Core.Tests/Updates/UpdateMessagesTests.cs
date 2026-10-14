@@ -11,7 +11,9 @@ public class UpdateMessagesTests
         var all = OverlayMessages.All().ToHashSet();
 
         Assert.Contains(OverlayMessages.UpdateDownloading, all);
+        Assert.Contains(OverlayMessages.UpdateInstalling, all);
         Assert.Contains(OverlayMessages.UpdateCancelled, all);
+        Assert.Contains(OverlayMessages.UpdateInstallFailed, all);
         Assert.Contains(OverlayMessages.UpdateLaunchFailed, all);
         Assert.Contains(OverlayMessages.UpdateUpToDate, all);
         Assert.Contains(OverlayMessages.UpdateCheckFailed, all);

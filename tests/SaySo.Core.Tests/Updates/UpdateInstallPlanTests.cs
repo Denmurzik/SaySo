@@ -13,13 +13,12 @@ public class UpdateInstallPlanTests
             installable);
 
     [Fact]
-    public void ProgramFiles_IsAllUsers_AndElevated()
+    public void ProgramFiles_IsAllUsers()
     {
         var plan = Decide(@"C:\Program Files\SaySo\SaySo.exe");
 
         Assert.Equal(UpdateInstallAction.Install, plan.Action);
         Assert.True(plan.AllUsers);
-        Assert.True(plan.Elevate);
         Assert.Equal("/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /UPDATE /ALLUSERS", plan.Arguments);
     }
 
@@ -28,13 +27,12 @@ public class UpdateInstallPlanTests
         Assert.True(Decide(@"C:\Program Files (x86)\SaySo\SaySo.exe").AllUsers);
 
     [Fact]
-    public void PerUserInstall_IsCurrentUser_WithoutElevation()
+    public void PerUserInstall_IsCurrentUser()
     {
         var plan = Decide(@"C:\Users\Ann\AppData\Local\Programs\SaySo\SaySo.exe");
 
         Assert.Equal(UpdateInstallAction.Install, plan.Action);
         Assert.False(plan.AllUsers);
-        Assert.False(plan.Elevate);
         Assert.Equal("/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /UPDATE /CURRENTUSER", plan.Arguments);
     }
 
@@ -58,17 +56,15 @@ public class UpdateInstallPlanTests
         var plan = Decide(@"C:\Users\Ann\AppData\Local\Programs\SaySo\SaySo.exe", installed: false);
 
         Assert.Equal(UpdateInstallAction.OpenReleasePage, plan.Action);
-        Assert.False(plan.Elevate);
         Assert.Equal("", plan.Arguments);
     }
 
     [Fact]
-    public void NoUninstallerInProgramFiles_StillOpensReleasePage_NeverElevates()
+    public void NoUninstallerInProgramFiles_StillOpensReleasePage()
     {
         var plan = Decide(@"C:\Program Files\SaySo\SaySo.exe", installed: false);
 
         Assert.Equal(UpdateInstallAction.OpenReleasePage, plan.Action);
-        Assert.False(plan.Elevate);
     }
 
     [Fact]

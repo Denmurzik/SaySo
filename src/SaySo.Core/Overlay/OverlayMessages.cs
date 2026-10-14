@@ -36,7 +36,9 @@ public static class OverlayMessages
 
     // Обновление: плашка показывается, пока идёт скачивание и после отмены/сбоя запуска.
     public const string UpdateDownloading = "Скачиваю обновление…";
+    public const string UpdateInstalling = "Устанавливаю обновление…";
     public const string UpdateCancelled = "Обновление отменено";
+    public const string UpdateInstallFailed = "Не удалось установить обновление";
     public const string UpdateLaunchFailed = "Не удалось запустить обновление";
     public const string UpdateUpToDate = "Установлена последняя версия";
     public const string UpdateCheckFailed = "Не удалось проверить обновления";
@@ -114,7 +116,9 @@ public static class OverlayMessages
     private static IEnumerable<string> UpdateTexts()
     {
         yield return UpdateDownloading;
+        yield return UpdateInstalling;
         yield return UpdateCancelled;
+        yield return UpdateInstallFailed;
         yield return UpdateLaunchFailed;
         yield return UpdateUpToDate;
         yield return UpdateCheckFailed;

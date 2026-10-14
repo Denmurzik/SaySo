@@ -24,10 +24,12 @@ public interface IUpdateHost
 
     void OpenUrl(string url);
 
-    InstallerLaunchResult LaunchInstaller(string path, string arguments, bool elevate);
-
-    /// <summary>Штатное завершение процесса (путь Quit): после него Setup заменит файлы и перезапустит SaySo.</summary>
-    void Quit();
+    /// <summary>
+    /// Запустить Setup без повышения прав и дождаться его завершения (не блокируя поток). Процесс SaySo при этом
+    /// сам не завершается: его останавливает Setup по IPC Quit. Отмену токена (процесс завершается) выполнять
+    /// исключением <see cref="OperationCanceledException"/>.
+    /// </summary>
+    Task<InstallerRun> RunInstallerAsync(string path, string arguments, CancellationToken ct);
 
     /// <summary>Операция (проверка, скачивание) закончилась: сбросить память после сетевой активности.</summary>
     void OperationFinished();
@@ -120,7 +122,7 @@ public sealed class UpdateCoordinator(
 
         if (_staged is not null)
         {
-            LaunchStaged();
+            _ = ObserveAsync(LaunchStagedDeferredAsync(), "Отложенный запуск обновления");
         }
         else if (_installRequested)
         {
@@ -164,7 +166,9 @@ public sealed class UpdateCoordinator(
     }
 
     /// <summary>
-    /// Установить обновление: показать плашку «Скачиваю…», скачать и проверить Setup, запустить его и завершить процесс.
+    /// Установить обновление: показать плашку «Скачиваю…», скачать и проверить Setup, запустить его (без повышения прав:
+    /// <c>/ALLUSERS</c> Setup запрашивает у UAC сам) и ждать его завершения. Штатно SaySo остановит сам Setup по IPC Quit,
+    /// и ожидание прервётся вместе с процессом; Setup вышел раньше с ненулевым кодом — сообщаем об отмене или сбое.
     /// Идёт диктовка — просьба запоминается и выполняется в <see cref="OnSessionEnded"/>.
     /// </summary>
     public async Task InstallAsync()
@@ -388,7 +392,7 @@ public sealed class UpdateCoordinator(
         _staged = (installer, plan, release.Version);
         if (host.IsDictationIdle)
         {
-            LaunchStaged();
+            await LaunchStagedAsync().ConfigureAwait(true);
         }
         else
         {
@@ -396,36 +400,80 @@ public sealed class UpdateCoordinator(
         }
     }
 
-    private void LaunchStaged()
+    // Запуск проверенного Setup, отложенного до конца диктовки: операция идёт вне InstallAsync, поэтому флаг занятости — здесь.
+    private async Task LaunchStagedDeferredAsync()
+    {
+        _installing = true;
+        try
+        {
+            await LaunchStagedAsync().ConfigureAwait(true);
+        }
+        finally
+        {
+            _installing = false;
+            if (!_disposed)
+            {
+                host.OperationFinished();
+            }
+        }
+    }
+
+    private async Task LaunchStagedAsync()
     {
         var (installer, plan, version) = _staged!.Value;
         _staged = null;
-        InstallerLaunchResult result;
+        Log.Info($"Запуск установки версии {version.ToString(3)} ({(plan.AllUsers ? "для всех" : "для текущего пользователя")})");
+        host.ShowMessage(OverlayMessages.UpdateInstalling, isError: false);
+        InstallerRun run;
         try
         {
-            result = host.LaunchInstaller(installer.Path, plan.Arguments, plan.Elevate);
+            // Страж держит файл открытым, пока Setup не завершится: для /ALLUSERS он перезапускает сам себя с повышением,
+            // и подменить файл между этими запусками нельзя.
+            run = await host.RunInstallerAsync(installer.Path, plan.Arguments, _cts.Token).ConfigureAwait(true);
+        }
+        catch (OperationCanceledException)
+        {
+            installer.Dispose(); // процесс завершается (Setup остановил его по IPC Quit); Setup продолжает работу
+            return;
         }
         catch (Exception e) when (e is Win32Exception or InvalidOperationException or IOException)
         {
             Log.Error("Запуск установщика обновления", e);
-            result = InstallerLaunchResult.Failed;
+            run = new InstallerRun(InstallerLaunchResult.Failed);
         }
 
-        switch (result)
+        if (_disposed)
         {
-            case InstallerLaunchResult.Started:
-                Log.Info($"Запущена установка версии {version.ToString(3)} ({(plan.AllUsers ? "для всех" : "для текущего пользователя")})");
-                installer.Dispose(); // Setup уже держит файл; страж больше не нужен
-                host.Quit();
-                break;
+            installer.Dispose();
+            return;
+        }
+
+        switch (run.Result)
+        {
             case InstallerLaunchResult.Cancelled:
                 Log.Info("Обновление отменено в окне UAC");
                 installer.Delete();
                 host.ShowMessage(OverlayMessages.UpdateCancelled, isError: false);
                 break;
-            default:
+            case InstallerLaunchResult.Failed:
                 installer.Delete();
                 host.ShowMessage(OverlayMessages.UpdateLaunchFailed, isError: true);
+                break;
+            default:
+                Log.Info($"Setup завершился с кодом {run.ExitCode}, SaySo ещё работает");
+                if (run.ExitCode == 0)
+                {
+                    // Успех при живом демоне не штатен; файл не трогаем — повышенная копия Setup могла ещё читать его.
+                    installer.Dispose();
+                }
+                else
+                {
+                    // Отказ в UAC (Setup завершается с ненулевым кодом) или отмена в самом Setup; коды Inno 3 и 4 — фатальная ошибка.
+                    installer.Delete();
+                    var fatal = run.ExitCode is 3 or 4;
+                    host.ShowMessage(fatal ? OverlayMessages.UpdateInstallFailed : OverlayMessages.UpdateCancelled, isError: fatal);
+                }
+
                 break;
         }
     }
