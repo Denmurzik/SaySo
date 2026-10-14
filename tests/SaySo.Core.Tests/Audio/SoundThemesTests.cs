@@ -1,6 +1,5 @@
 using System.Buffers.Binary;
 using SaySo.Core.Audio;
-using SaySo.Core.Platform;
 
 namespace SaySo.Core.Tests.Audio;
 

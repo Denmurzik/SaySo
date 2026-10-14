@@ -1,63 +1,56 @@
-using SaySo.Core.Platform;
-
 namespace SaySo.Core.Audio;
 
 /// <summary>
-/// Читает звуки только выбранной темы и только по требованию (по одному виду за раз): в простое демон не держит ни байта
-/// чужих тем. Буферы выделяются сразу закреплёнными (POH): PlaySound(SND_MEMORY|SND_ASYNC) читает память после возврата.
-/// При смене темы прежние буферы отпускаются. Потоки не синхронизирует: вызывающий (SoundPlayer) сериализует доступ.
+/// Находит звук темы прямо в образе сборки: встроенный ресурс отдаётся потоком UnmanagedMemoryStream, а его PositionPointer
+/// указывает в сам образ SaySo.exe. Ничего не копируется, не закрепляется и не освобождается: образ не выгружается,
+/// указатель действителен всё время работы процесса (в том числе пока PlaySound с SND_ASYNC читает память после возврата).
 /// </summary>
 public sealed class SoundThemeLoader(Func<string, Stream?> openResource)
 {
-    private const int MaxResourceBytes = 4 * 1024 * 1024;
-
-    private readonly byte[]?[] _buffers = new byte[]?[3];
+    private readonly object _gate = new();
+    private readonly Dictionary<string, nint> _pointers = [];
 
     public SoundThemeLoader()
         : this(OpenEmbedded)
     {
     }
 
-    /// <summary>Выбранная тема; null, пока ничего не выбрано.</summary>
-    public string? ThemeId { get; private set; }
-
-    /// <summary>Загружен ли уже звук этого вида в выбранной теме.</summary>
-    public bool IsLoaded(SoundKind kind) => _buffers[(int)kind] is not null;
-
-    /// <returns>true — тема сменилась и буферы прежней отпущены; false — выбрана та же.</returns>
-    public bool Select(string themeId)
+    /// <summary>Указатель на начало WAV (заголовок RIFF) звука этого вида в теме.</summary>
+    /// <exception cref="InvalidOperationException">Ресурса нет или он не отдаётся указателем на память.</exception>
+    public nint Get(string themeId, SoundKind kind)
     {
-        if (string.Equals(ThemeId, themeId, StringComparison.Ordinal))
-        {
-            return false;
-        }
-
-        Array.Clear(_buffers);
-        ThemeId = themeId;
-        return true;
-    }
-
-    /// <summary>Закреплённый WAV выбранной темы; при первом обращении читается из ресурсов и запоминается.</summary>
-    public byte[] Get(SoundKind kind)
-    {
-        var themeId = ThemeId ?? throw new InvalidOperationException("Звуковая тема не выбрана.");
-        if (_buffers[(int)kind] is { } cached)
-        {
-            return cached;
-        }
-
         var name = SoundThemes.ResourceName(themeId, kind);
-        using var stream = openResource(name) ?? throw new InvalidOperationException($"В сборке нет ресурса {name}.");
-        if (stream.Length is <= 0 or > MaxResourceBytes)
+        lock (_gate)
         {
-            throw new InvalidDataException($"Ресурс {name} имеет недопустимый размер.");
+            if (!_pointers.TryGetValue(name, out var pointer))
+            {
+                pointer = Locate(name);
+                _pointers[name] = pointer;
+            }
+
+            return pointer;
+        }
+    }
+
+    private nint Locate(string name)
+    {
+        using var stream = openResource(name) ?? throw new InvalidOperationException($"В сборке нет ресурса {name}.");
+        if (stream is not UnmanagedMemoryStream { Position: 0 } memory)
+        {
+            throw new InvalidOperationException($"Ресурс {name} не отдаётся указателем на память образа.");
         }
 
-        var data = GC.AllocateUninitializedArray<byte>((int)stream.Length, pinned: true);
-        stream.ReadExactly(data);
-        _buffers[(int)kind] = data;
-        return data;
+        try
+        {
+            return PositionOf(memory); // указатель берётся до Dispose: сама память потоку не принадлежит
+        }
+        catch (NotSupportedException e)
+        {
+            throw new InvalidOperationException($"У потока ресурса {name} нет прямого указателя на память.", e);
+        }
     }
+
+    private static unsafe nint PositionOf(UnmanagedMemoryStream stream) => (nint)stream.PositionPointer;
 
     private static Stream? OpenEmbedded(string name) => typeof(SoundThemeLoader).Assembly.GetManifestResourceStream(name);
 }

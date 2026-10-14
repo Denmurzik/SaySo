@@ -1,131 +1,104 @@
+using System.Buffers.Binary;
 using SaySo.Core.Audio;
-using SaySo.Core.Platform;
 
 namespace SaySo.Core.Tests.Audio;
 
 public class SoundThemeLoaderTests
 {
-    private static readonly byte[] FakeWav = [1, 2, 3, 4, 5];
+    private static readonly SoundKind[] Kinds = [SoundKind.Start, SoundKind.Stop, SoundKind.Error];
 
     [Fact]
-    public void Get_WithoutSelectedTheme_Throws()
+    public unsafe void Get_ReturnsPointerIntoTheResourceMemory_WithoutCopying()
     {
-        var loader = new SoundThemeLoader(_ => new MemoryStream(FakeWav));
+        var data = GC.AllocateArray<byte>(8, pinned: true);
+        fixed (byte* p = data)
+        {
+            var address = (nint)p; // массив закреплён (POH), адрес стабилен и без fixed
+            var loader = new SoundThemeLoader(_ => new UnmanagedMemoryStream((byte*)address, data.Length));
 
-        Assert.Null(loader.ThemeId);
-        Assert.Throws<InvalidOperationException>(() => loader.Get(SoundKind.Start));
+            Assert.Equal(address, loader.Get("1-steklo", SoundKind.Start));
+        }
     }
 
     [Fact]
-    public void Select_ReadsNothingUntilASoundIsRequested()
+    public void Get_AsksOnlyForTheRequestedResource_AndCachesThePointer()
     {
         var opened = new List<string>();
         var loader = Spy(opened);
 
-        Assert.True(loader.Select("1-steklo"));
+        var first = loader.Get("1-steklo", SoundKind.Start);
+        var second = loader.Get("1-steklo", SoundKind.Start);
 
-        Assert.Empty(opened);
-        Assert.False(loader.IsLoaded(SoundKind.Start));
-    }
-
-    [Fact]
-    public void Get_ReadsOnlyTheRequestedSoundOfTheSelectedTheme_AndCachesIt()
-    {
-        var opened = new List<string>();
-        var loader = Spy(opened);
-        loader.Select("1-steklo");
-
-        var first = loader.Get(SoundKind.Start);
-        var second = loader.Get(SoundKind.Start);
-
-        Assert.Same(first, second);
+        Assert.Equal(first, second);
         Assert.Equal(["SaySo.Sounds.1-steklo.start.wav"], opened);
-        Assert.True(loader.IsLoaded(SoundKind.Start));
-        Assert.False(loader.IsLoaded(SoundKind.Stop));
-        Assert.False(loader.IsLoaded(SoundKind.Error));
     }
 
     [Fact]
-    public void Get_ReturnsTheResourceBytes()
-    {
-        var loader = new SoundThemeLoader(_ => new MemoryStream(FakeWav));
-        loader.Select("2-kaplya");
-
-        Assert.Equal(FakeWav, loader.Get(SoundKind.Stop));
-    }
-
-    [Fact]
-    public void Select_AnotherTheme_ReleasesThePreviousOneAndLoadsOnlyTheNewOne()
+    public void Get_OtherThemeAndKind_OpensOnlyThatResource()
     {
         var opened = new List<string>();
         var loader = Spy(opened);
-        loader.Select("1-steklo");
-        var oldStart = loader.Get(SoundKind.Start);
-        loader.Get(SoundKind.Stop);
-        loader.Get(SoundKind.Error);
+        var steklo = loader.Get("1-steklo", SoundKind.Start);
         opened.Clear();
 
-        Assert.True(loader.Select("2-kaplya"));
+        var kaplya = loader.Get("2-kaplya", SoundKind.Error);
 
-        Assert.Equal("2-kaplya", loader.ThemeId);
-        Assert.False(loader.IsLoaded(SoundKind.Start));
-        Assert.False(loader.IsLoaded(SoundKind.Stop));
-        Assert.False(loader.IsLoaded(SoundKind.Error));
-        Assert.Empty(opened);
-
-        var newStart = loader.Get(SoundKind.Start);
-
-        Assert.NotSame(oldStart, newStart);
-        Assert.Equal(["SaySo.Sounds.2-kaplya.start.wav"], opened);
-        Assert.DoesNotContain(opened, n => n.Contains("1-steklo", StringComparison.Ordinal));
+        Assert.NotEqual(steklo, kaplya);
+        Assert.Equal(["SaySo.Sounds.2-kaplya.error.wav"], opened);
     }
 
     [Fact]
-    public void Select_SameTheme_KeepsTheLoadedSounds()
-    {
-        var opened = new List<string>();
-        var loader = Spy(opened);
-        loader.Select("3-derevo");
-        var start = loader.Get(SoundKind.Start);
-
-        Assert.False(loader.Select("3-derevo"));
-
-        Assert.True(loader.IsLoaded(SoundKind.Start));
-        Assert.Same(start, loader.Get(SoundKind.Start));
-        Assert.Single(opened);
-    }
-
-    [Fact]
-    public void Get_MissingResource_ThrowsAndLoadsNothing()
+    public void Get_MissingResource_Throws()
     {
         var loader = new SoundThemeLoader(_ => null);
-        loader.Select("1-steklo");
 
-        Assert.Throws<InvalidOperationException>(() => loader.Get(SoundKind.Start));
-        Assert.False(loader.IsLoaded(SoundKind.Start));
+        Assert.Throws<InvalidOperationException>(() => loader.Get("1-steklo", SoundKind.Start));
     }
 
     [Fact]
-    public void Get_EmptyResource_Throws()
+    public void Get_StreamWithoutDirectMemory_Throws()
     {
-        var loader = new SoundThemeLoader(_ => new MemoryStream());
-        loader.Select("1-steklo");
+        var loader = new SoundThemeLoader(_ => new MemoryStream([1, 2, 3]));
 
-        Assert.Throws<InvalidDataException>(() => loader.Get(SoundKind.Start));
+        Assert.Throws<InvalidOperationException>(() => loader.Get("1-steklo", SoundKind.Start));
     }
 
     [Fact]
-    public void EmbeddedLoader_ReadsRealSounds_ForEveryThemeOneAtATime()
+    public unsafe void Get_StreamNotAtStart_Throws()
     {
+        var data = GC.AllocateArray<byte>(8, pinned: true);
+        fixed (byte* p = data)
+        {
+            var address = (nint)p;
+            var loader = new SoundThemeLoader(_ => new UnmanagedMemoryStream((byte*)address, data.Length) { Position = 4 });
+
+            Assert.Throws<InvalidOperationException>(() => loader.Get("1-steklo", SoundKind.Start));
+        }
+    }
+
+    [Fact]
+    public unsafe void EmbeddedLoader_PointsAtTheWholeWav_ForEveryThemeAndKind()
+    {
+        var assembly = typeof(SoundThemes).Assembly;
         var loader = new SoundThemeLoader();
 
         foreach (var theme in SoundThemes.All)
         {
-            loader.Select(theme.Id);
-            foreach (var kind in new[] { SoundKind.Start, SoundKind.Stop, SoundKind.Error })
+            foreach (var kind in Kinds)
             {
-                var wav = loader.Get(kind);
-                Assert.True(wav.AsSpan(0, 4).SequenceEqual("RIFF"u8), $"{theme.Id} {kind}");
+                var name = SoundThemes.ResourceName(theme.Id, kind);
+                var address = loader.Get(theme.Id, kind);
+                var pointer = (byte*)address;
+
+                Assert.NotEqual(0, address);
+                Assert.Equal(address, loader.Get(theme.Id, kind)); // тот же адрес при повторных вызовах
+                Assert.True(new ReadOnlySpan<byte>(pointer, 4).SequenceEqual("RIFF"u8), $"{name}: нет RIFF по указателю");
+
+                using var stream = assembly.GetManifestResourceStream(name)!;
+                var expected = new byte[stream.Length];
+                stream.ReadExactly(expected);
+                Assert.Equal(expected.Length, BinaryPrimitives.ReadInt32LittleEndian(new ReadOnlySpan<byte>(pointer + 4, 4)) + 8);
+                Assert.True(new ReadOnlySpan<byte>(pointer, expected.Length).SequenceEqual(expected), $"{name}: байты по указателю отличаются от ресурса");
             }
         }
     }

@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Security;
+using SaySo.Core.Audio;
 using SaySo.Core.Diagnostics;
 using SaySo.Core.Dictation;
 using SaySo.Core.Engines.Gemini;
@@ -454,7 +455,6 @@ internal sealed class DaemonHost : IDisposable
                 if (_settingsStore.TryLoad(out var reloaded))
                 {
                     _settings = reloaded;
-                    SoundPlayer.Select(_settings.SoundTheme); // буферы прежней темы отпускаются сразу, а не при следующем сигнале
                 }
                 else
                 {

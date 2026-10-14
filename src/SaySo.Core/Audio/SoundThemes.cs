@@ -1,5 +1,3 @@
-using SaySo.Core.Platform;
-
 namespace SaySo.Core.Audio;
 
 /// <summary>Звуковая тема: идентификатор (он же имя каталога ресурсов) и название для окна настроек.</summary>

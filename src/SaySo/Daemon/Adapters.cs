@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using SaySo.Core.Audio;
 using SaySo.Core.Audio.Wasapi;
 using SaySo.Core.Diagnostics;
 using SaySo.Core.Dictation;
