@@ -41,6 +41,8 @@ internal static unsafe partial class TestWindows
 
     public static bool IsTopmost(nint hwnd) => (GetWindowLongPtrW(hwnd, GWL_EXSTYLE) & WS_EX_TOPMOST) != 0;
 
+    public static long ExStyle(nint hwnd) => GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+
     /// <summary>true — <paramref name="upper"/> выше <paramref name="lower"/> в порядке окон верхнего уровня.</summary>
     public static bool IsAbove(nint upper, nint lower)
     {

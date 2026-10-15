@@ -18,7 +18,7 @@ public static unsafe class GdiTextMask
     /// </summary>
     public static TextMask RenderText(string text, int fontPx, int maxWidthPx)
     {
-        return Render(TextFont, fontPx, Native.FW_SEMIBOLD, dc =>
+        return Render(TextFont, fontPx, Native.FW_NORMAL, dc =>
         {
             Native.SIZE size = default;
             bool ok;
@@ -53,7 +53,7 @@ public static unsafe class GdiTextMask
 
         try
         {
-            var font = Native.CreateFontW(-13, 0, 0, 0, Native.FW_SEMIBOLD, 0, 0, 0, 1, 0, 0, Native.ANTIALIASED_QUALITY, 0, face);
+            var font = Native.CreateFontW(-13, 0, 0, 0, Native.FW_NORMAL, 0, 0, 0, 1, 0, 0, Native.ANTIALIASED_QUALITY, 0, face);
             if (font == 0)
             {
                 return "";

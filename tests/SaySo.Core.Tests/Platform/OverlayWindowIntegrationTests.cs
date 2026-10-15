@@ -11,8 +11,29 @@ public class OverlayWindowIntegrationTests
     // Повторное поднятие плашки идёт раз в 250 мс; запас на загруженную машину.
     private const int RaiseWaitMs = 700;
 
+    // Скрытие длится 280 мс (растворение при «Уменьшении движения» — 150 мс), страховочный таймер — 1,5 с.
+    private const int ReleaseWaitMs = 2500;
+
     [Fact]
-    public void ShowAllModes_DoesNotStealFocus_AndHides() => OnStaThread(() =>
+    public void Window_IsLayeredClickThroughNoActivateTopmost_WithoutRedirectionBitmap() => OnStaThread(() =>
+    {
+        using var overlay = new OverlayWindow(() => 0);
+
+        var ex = TestWindows.ExStyle(overlay.Handle);
+
+        foreach (var (flag, name) in new[]
+                 {
+                     (Native.WS_EX_LAYERED, "WS_EX_LAYERED"), (Native.WS_EX_TRANSPARENT, "WS_EX_TRANSPARENT"),
+                     (Native.WS_EX_NOACTIVATE, "WS_EX_NOACTIVATE"), (Native.WS_EX_TOOLWINDOW, "WS_EX_TOOLWINDOW"),
+                     (Native.WS_EX_TOPMOST, "WS_EX_TOPMOST"), (Native.WS_EX_NOREDIRECTIONBITMAP, "WS_EX_NOREDIRECTIONBITMAP"),
+                 })
+        {
+            Assert.True((ex & flag) != 0, "нет стиля " + name);
+        }
+    });
+
+    [Fact]
+    public void ShowAllModes_DoesNotStealFocus_AndHidesWithReleasedScene() => OnStaThread(() =>
     {
         var before = Native.GetForegroundWindow();
         using var overlay = new OverlayWindow(() => 0.7f);
@@ -23,7 +44,37 @@ public class OverlayWindowIntegrationTests
         overlay.ShowMessage("Проверка сообщения", OverlayTone.Error);
         TestWindows.Pump(300);
         Assert.Equal(before, Native.GetForegroundWindow());
+        Assert.True(overlay.HasScene);
+
         overlay.Hide();
+        WaitReleased(overlay);
+
+        Assert.False(TestWindows.IsVisible(overlay.Handle));
+        Assert.Equal(before, Native.GetForegroundWindow());
+    });
+
+    [Fact]
+    public void ShownCapsule_LetsClicksThrough() => OnStaThread(() =>
+    {
+        using var overlay = new OverlayWindow(() => 0.5f);
+        overlay.ShowRecording();
+        TestWindows.Pump(700); // пружина выезда успокоилась
+        try
+        {
+            var layout = overlay.Layout!.Value;
+            var center = new Native.POINT
+            {
+                X = layout.WindowLeft + layout.CapsuleLeft + layout.CapsuleMaxWidth / 2,
+                Y = layout.WindowTop + layout.EndY + layout.CapsuleHeight / 2,
+            };
+
+            Assert.NotEqual(overlay.Handle, Native.WindowFromPoint(center));
+        }
+        finally
+        {
+            overlay.Hide();
+            WaitReleased(overlay);
+        }
     });
 
     [Fact]
@@ -34,10 +85,12 @@ public class OverlayWindowIntegrationTests
         try
         {
             Assert.True(TestWindows.IsTopmost(overlay.Handle), "у плашки нет WS_EX_TOPMOST");
+            Assert.True(TestWindows.IsVisible(overlay.Handle));
         }
         finally
         {
             overlay.Hide();
+            WaitReleased(overlay);
         }
     });
 
@@ -62,13 +115,14 @@ public class OverlayWindowIntegrationTests
         {
             TestWindows.Destroy(cover);
             overlay.Hide();
+            WaitReleased(overlay);
         }
     });
 
     [Fact]
     public void Message_TopmostWindowCreatedLater_DoesNotStayAboveOverlay() => OnStaThread(() =>
     {
-        // Сообщение показывается без таймера анимации: поднимать плашку должен отдельный механизм.
+        // У сообщения нет таймера уровня: поднимать плашку должен отдельный механизм.
         using var overlay = new OverlayWindow(() => 0);
         overlay.ShowMessage("Речь не распознана", OverlayTone.Info);
         TestWindows.Pump(100);
@@ -85,6 +139,7 @@ public class OverlayWindowIntegrationTests
         {
             TestWindows.Destroy(cover);
             overlay.Hide();
+            WaitReleased(overlay);
         }
     });
 
@@ -103,6 +158,7 @@ public class OverlayWindowIntegrationTests
         {
             TestWindows.Destroy(cover);
             overlay.Hide();
+            WaitReleased(overlay);
         }
     });
 
@@ -110,46 +166,142 @@ public class OverlayWindowIntegrationTests
     private static bool TimerExists(OverlayWindow overlay, nuint id) => Native.KillTimer(overlay.Handle, id);
 
     [Fact]
-    public void WhileVisible_TopmostTimerExists_AndAnimationTimerOnlyForAnimatedModes() => OnStaThread(() =>
+    public void WhileVisible_TopmostTimerExists_AndLevelTimerOnlyWhileRecording() => OnStaThread(() =>
     {
         using var recording = new OverlayWindow(() => 0);
         recording.ShowRecording();
         Assert.True(TimerExists(recording, OverlayWindow.TopmostTimer));
-        Assert.True(TimerExists(recording, OverlayWindow.AnimationTimer));
+        Assert.True(TimerExists(recording, OverlayWindow.LevelTimer));
         recording.Hide();
+        WaitReleased(recording);
+
+        using var processing = new OverlayWindow(() => 0);
+        processing.ShowProcessing();
+        Assert.True(TimerExists(processing, OverlayWindow.TopmostTimer));
+        Assert.False(TimerExists(processing, OverlayWindow.LevelTimer)); // точки пульсируют анимацией компоновщика
+        processing.Hide();
+        WaitReleased(processing);
 
         using var message = new OverlayWindow(() => 0);
         message.ShowMessage("Речь не распознана", OverlayTone.Info);
         Assert.True(TimerExists(message, OverlayWindow.TopmostTimer));
         Assert.True(TimerExists(message, OverlayWindow.HideTimer));
-        Assert.False(TimerExists(message, OverlayWindow.AnimationTimer)); // сообщение не анимируется
+        Assert.False(TimerExists(message, OverlayWindow.LevelTimer));
         message.Hide();
+        WaitReleased(message);
     });
 
-    [Fact]
-    public void Hide_StopsEveryTimer_AfterRecording() => OnStaThread(() =>
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Hide_StopsTimersAtOnce_AndAfterAnimationLeavesNoTimersAndNoScene(bool message) => OnStaThread(() =>
     {
         using var overlay = new OverlayWindow(() => 0);
-        overlay.ShowRecording();
+        if (message)
+        {
+            overlay.ShowMessage("Речь не распознана", OverlayTone.Info);
+        }
+        else
+        {
+            overlay.ShowRecording();
+        }
+
         TestWindows.Pump(100);
         overlay.Hide();
 
         Assert.False(TimerExists(overlay, OverlayWindow.TopmostTimer), "таймер подъёма пережил Hide()");
-        Assert.False(TimerExists(overlay, OverlayWindow.AnimationTimer), "таймер анимации пережил Hide()");
+        Assert.False(TimerExists(overlay, OverlayWindow.LevelTimer), "таймер уровня пережил Hide()");
         Assert.False(TimerExists(overlay, OverlayWindow.HideTimer));
+
+        WaitReleased(overlay);
+
+        Assert.False(TimerExists(overlay, OverlayWindow.ReleaseTimer), "страховочный таймер пережил освобождение");
+        Assert.False(TestWindows.IsVisible(overlay.Handle));
     });
 
     [Fact]
-    public void Hide_StopsEveryTimer_AfterMessage() => OnStaThread(() =>
+    public void Release_ClosesDispatcherQueue_AndRaisesReleasedOnce() => OnStaThread(() =>
     {
         using var overlay = new OverlayWindow(() => 0);
-        overlay.ShowMessage("Речь не распознана", OverlayTone.Info);
-        TestWindows.Pump(100);
-        overlay.Hide();
+        var released = 0;
+        overlay.Released += () => released++;
+        overlay.ShowMessage("Нет сети, текст в буфере обмена", OverlayTone.Error);
+        TestWindows.Pump(300);
+        Assert.NotNull(Windows.System.DispatcherQueue.GetForCurrentThread());
 
-        Assert.False(TimerExists(overlay, OverlayWindow.TopmostTimer), "таймер подъёма пережил Hide()");
-        Assert.False(TimerExists(overlay, OverlayWindow.HideTimer), "таймер скрытия пережил Hide()");
-        Assert.False(TimerExists(overlay, OverlayWindow.AnimationTimer));
+        overlay.Hide();
+        WaitReleased(overlay);
+        TestWindows.Pump(100); // ShutdownQueueAsync завершается на цикле сообщений
+
+        Assert.Equal(1, released);
+        Assert.Null(Windows.System.DispatcherQueue.GetForCurrentThread());
+    });
+
+    [Fact]
+    public void Text_GeometrySourcesAreFreed_AfterReleaseAndCollection() => OnStaThread(() =>
+    {
+        using var overlay = new OverlayWindow(() => 0);
+        overlay.ShowMessage("Резерв Groq (Gemini: лимит исчерпан)", OverlayTone.Info);
+        TestWindows.Pump(200);
+        overlay.ShowMessage("Речь не распознана", OverlayTone.Info);
+        TestWindows.Pump(300);
+        overlay.Hide();
+        WaitReleased(overlay);
+
+        for (var i = 0; i < 3 && GeometrySource.Live > 0; i++)
+        {
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            TestWindows.Pump(50);
+        }
+
+        Assert.Equal(0, GeometrySource.Live);
+    });
+
+    [Fact]
+    public void ShowDuringHide_ReversesWithoutRelease() => OnStaThread(() =>
+    {
+        using var overlay = new OverlayWindow(() => 0.4f);
+        var released = 0;
+        overlay.Released += () => released++;
+        overlay.ShowRecording();
+        TestWindows.Pump(600);
+        overlay.Hide();
+        TestWindows.Pump(100); // скрытие в разгаре
+
+        overlay.ShowRecording();
+        TestWindows.Pump(1800); // дольше и анимации скрытия, и страховочного таймера
+
+        Assert.Equal(0, released);
+        Assert.True(overlay.HasScene);
+        Assert.True(TestWindows.IsVisible(overlay.Handle));
+        Assert.True(TimerExists(overlay, OverlayWindow.TopmostTimer));
+        Assert.False(TimerExists(overlay, OverlayWindow.ReleaseTimer));
+        overlay.Hide();
+        WaitReleased(overlay);
+    });
+
+    [Fact]
+    public void RepeatedSessions_RecreateQueueAndCompositor_EvenRightAfterRelease() => OnStaThread(() =>
+    {
+        using var overlay = new OverlayWindow(() => 0.6f);
+        for (var i = 0; i < 3; i++)
+        {
+            overlay.ShowRecording();
+            TestWindows.Pump(200);
+            overlay.ShowMessage("Речь не распознана", OverlayTone.Info);
+            TestWindows.Pump(200);
+            overlay.Hide();
+            WaitReleased(overlay, pumpAfter: false);
+
+            // Сразу, без прокачки сообщений: закрытие прежней очереди может быть ещё не завершено.
+            overlay.ShowProcessing();
+            Assert.True(overlay.HasScene, $"сессия {i}: сцена не создалась сразу после освобождения прежней");
+            TestWindows.Pump(200);
+            Assert.True(TestWindows.IsVisible(overlay.Handle));
+            overlay.Hide();
+            WaitReleased(overlay);
+        }
     });
 
     [Fact]
@@ -158,6 +310,7 @@ public class OverlayWindowIntegrationTests
         using var overlay = new OverlayWindow(() => 0);
         overlay.ShowRecording();
         overlay.Hide();
+        WaitReleased(overlay);
         var cover = TestWindows.CreateTopmostCover(0, 0, 300, 300);
         try
         {
@@ -171,6 +324,21 @@ public class OverlayWindowIntegrationTests
             TestWindows.Destroy(cover);
         }
     });
+
+    private static void WaitReleased(OverlayWindow overlay, bool pumpAfter = true)
+    {
+        var until = Environment.TickCount64 + ReleaseWaitMs;
+        while (overlay.HasScene && Environment.TickCount64 < until)
+        {
+            TestWindows.Pump(20);
+        }
+
+        Assert.False(overlay.HasScene, "сцена не освобождена после скрытия");
+        if (pumpAfter)
+        {
+            TestWindows.Pump(20);
+        }
+    }
 
     private static void OnStaThread(Action body)
     {
