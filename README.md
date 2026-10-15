@@ -154,7 +154,7 @@ Windows does not let a normal app paste into windows running as administrator (e
 
 ## Memory footprint
 
-Measured on Windows 11 (x64), NativeAOT Release build:
+Measured on Windows 11 (x64), NativeAOT Release build. The rows below were measured on 0.1.2; the overlay of 0.1.3 is measured separately after the table:
 
 | Process | Private bytes | Working set |
 |---|---|---|
