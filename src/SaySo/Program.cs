@@ -18,6 +18,7 @@ public static class Program
             LaunchMode.RemoveAdminTask => RemoveAdminTask(),
             LaunchMode.Simulate => Daemon.SimulationRunner.Run(options),
             LaunchMode.CheckUpdates => Daemon.UpdateCheckCommand.Run(options),
+            LaunchMode.OverlayDemo => Daemon.OverlayDemo.Run(options),
             // Демон никогда не касается типов XAML — иначе в процесс загрузится Microsoft.UI.Xaml.dll.
             _ => Daemon.DaemonHost.Run(),
         };
