@@ -33,8 +33,10 @@ try
         case "render-states":
             RenderStates(opts.Get("out-dir") ?? "docs/assets");
             return 0;
+        case "overlay-capture":
+            return OverlayCapture.Run(opts.Require("exe"), opts.Get("out-dir") ?? "artifacts/overlay-capture");
         default:
-            Console.WriteLine("Команды: render-demo [--out F] | render-states [--out-dir D] | gemini --wav F [--realtime] [--mode smart|verbatim] [--lang ru-RU] [--vocab \"a,b\"] [--model M] [--query-key] | session --wav F [--realtime] | groq --wav F [--no-cleanup] | errors");
+            Console.WriteLine("Команды: overlay-capture --exe SaySo.exe [--out-dir D] | render-demo [--out F] | render-states [--out-dir D] | gemini --wav F [--realtime] [--mode smart|verbatim] [--lang ru-RU] [--vocab \"a,b\"] [--model M] [--query-key] | session --wav F [--realtime] | groq --wav F [--no-cleanup] | errors");
             return 2;
     }
 }
@@ -242,7 +244,7 @@ static void RenderStates(string dir)
 
     OverlayFrame Message(string text, OverlayTone tone)
     {
-        var mask = GdiTextMask.RenderText(text, (int)MathF.Round(13 * scale), (int)MathF.Round(400 * scale)); // как в OverlayWindow.ShowMessage
+        var mask = GdiTextMask.RenderText(text, (int)MathF.Round(13 * scale), (int)MathF.Round(400 * scale)); // та же ширина текста, что у плашки
         if (mask.Width == 0 || mask.Height == 0)
         {
             // GdiTextMask при сбое GDI молча возвращает пустую маску — на картинке была бы пилюля без текста.
