@@ -70,6 +70,17 @@ internal sealed unsafe class OverlayWindow : NativeWindow, IDictationOverlay
     /// <summary>Раскладка текущей сцены (для тестов: где на экране капсула).</summary>
     internal OverlayLayout? Layout => _scene?.Layout;
 
+    /// <summary>Материал текущей сцены (для тестов).</summary>
+    internal OverlayMaterial? Material => _scene?.Material;
+
+    /// <summary>Идёт ли текущая сцена в режиме «Уменьшение движения» (для тестов).</summary>
+    internal bool? SceneReducedMotion => _scene?.ReducedMotion;
+
+    /// <summary>Подмена системных условий в тестах: выбор материала и «Уменьшение движения».</summary>
+    internal Func<OverlayMaterial>? MaterialOverride { get; set; }
+
+    internal Func<bool>? ReducedMotionOverride { get; set; }
+
     public void ShowRecording()
     {
         _mode = OverlayMode.Recording;
@@ -209,7 +220,7 @@ internal sealed unsafe class OverlayWindow : NativeWindow, IDictationOverlay
         catch (Exception e)
         {
             PlatformLog.Error("Плашка: показ", e);
-            ReleaseScene(notify: false);
+            ReleaseScene(); // сцена могла успеть создаться: демон всё равно сбросит память
             return false;
         }
 
@@ -238,7 +249,7 @@ internal sealed unsafe class OverlayWindow : NativeWindow, IDictationOverlay
         var layout = CurrentLayout();
         try
         {
-            var scene = new OverlayScene(Handle, layout, ChooseMaterial(), ReducedMotion());
+            var scene = new OverlayScene(Handle, layout, ChooseMaterial(), ReducedMotionOverride?.Invoke() ?? ReducedMotion());
             _sceneFailureLogged = false;
             return scene;
         }
@@ -268,6 +279,11 @@ internal sealed unsafe class OverlayWindow : NativeWindow, IDictationOverlay
 
     private OverlayMaterial ChooseMaterial()
     {
+        if (MaterialOverride is { } chosen)
+        {
+            return chosen();
+        }
+
         Native.SYSTEM_POWER_STATUS power;
         var batterySaver = Native.GetSystemPowerStatus(&power) && (power.SystemStatusFlag & 1) != 0;
         return OverlayMotion.ChooseMaterial(Environment.OSVersion.Version.Build, TransparencyEffectsEnabled(), batterySaver, _hostBackdropAccepted);

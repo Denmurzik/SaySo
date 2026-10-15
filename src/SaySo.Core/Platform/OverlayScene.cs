@@ -65,6 +65,10 @@ internal sealed unsafe class OverlayScene : IDisposable
 
     public OverlayLayout Layout => _layout;
 
+    public OverlayMaterial Material { get; private set; }
+
+    public bool ReducedMotion => _reducedMotion;
+
     private Compositor C => _compositor ?? throw new ObjectDisposedException(nameof(OverlayScene));
 
     private void CreateQueue()
@@ -74,7 +78,7 @@ internal sealed unsafe class OverlayScene : IDisposable
         {
             dwSize = (uint)sizeof(Native.DispatcherQueueOptions),
             threadType = 2,    // DQTYPE_THREAD_CURRENT
-            apartmentType = 2, // DQTAT_COM_STA (поток демона уже STA)
+            apartmentType = 0, // DQTAT_COM_NONE: для текущего потока COM не инициализируется (поле — для выделенного потока); поток демона и так STA
         };
         nint controller;
         var hr = Native.CreateDispatcherQueueController(options, &controller);
@@ -176,12 +180,11 @@ internal sealed unsafe class OverlayScene : IDisposable
         frame.Shapes.Add(stroke);
         _capsule.Children.InsertAtTop(frame);
 
-        var width = OverlayMotion.Expressions.Width;
         Bind(_capsule, "Offset.Y", OverlayMotion.Expressions.Y);
-        Bind(clip, "Size", $"Vector2({width} - 2, p.Height - 2)");
-        Bind(clip, "Offset", $"Vector2((p.MaxWidth - {width}) / 2 + 1, 1)");
-        Bind(frameGeometry, "Size", $"Vector2({width} - 1, p.Height - 1)");
-        Bind(frameGeometry, "Offset", $"Vector2((p.MaxWidth - {width}) / 2 + 0.5, 0.5)");
+        Bind(clip, "Size", OverlayMotion.Expressions.ClipSize);
+        Bind(clip, "Offset", OverlayMotion.Expressions.ClipOffset);
+        Bind(frameGeometry, "Size", OverlayMotion.Expressions.BorderSize);
+        Bind(frameGeometry, "Offset", OverlayMotion.Expressions.BorderOffset);
         Bind(_content, "Opacity", OverlayMotion.Expressions.ContentOpacity);
     }
 
@@ -196,6 +199,7 @@ internal sealed unsafe class OverlayScene : IDisposable
     public void SetMaterial(OverlayMaterial material)
     {
         var c = C;
+        Material = material;
         _material!.Children.RemoveAll();
         if (material == OverlayMaterial.Acrylic)
         {
@@ -349,7 +353,8 @@ internal sealed unsafe class OverlayScene : IDisposable
         {
             var iid = ID2D1Factory.IID_Guid;
             void* factory;
-            if (Windows.Win32.Win32.D2D1CreateFactory(D2D1_FACTORY_TYPE.D2D1_FACTORY_TYPE_SINGLE_THREADED, &iid, null, &factory) < 0)
+            // Многопоточная фабрика: пути освобождает и поток финализатора (GeometrySource — IAgileObject, его держит обёртка CsWinRT).
+            if (Windows.Win32.Win32.D2D1CreateFactory(D2D1_FACTORY_TYPE.D2D1_FACTORY_TYPE_MULTI_THREADED, &iid, null, &factory) < 0)
             {
                 PlatformLog.Info("D2D1CreateFactory не удался: текст плашки не нарисован");
                 return null;
@@ -551,36 +556,43 @@ internal sealed unsafe class OverlayScene : IDisposable
     public void Dispose()
     {
         _hideGeneration++;
-        if (_target is not null)
+        try
         {
-            try
+            if (_target is not null)
             {
-                _target.Root = null;
+                try
+                {
+                    _target.Root = null;
+                }
+                catch (Exception e)
+                {
+                    PlatformLog.Error("Плашка: отсоединение дерева", e); // DWM перезапускался: объекты уже недействительны
+                }
             }
-            catch (Exception e)
-            {
-                PlatformLog.Error("Плашка: отсоединение дерева", e); // DWM перезапускался: объекты уже недействительны
-            }
+
+            _root?.Dispose();
+            _target?.Dispose();
+            _compositor?.Dispose();
         }
-
-        _root?.Dispose();
-        _target?.Dispose();
-        _compositor?.Dispose();
-        _root = _capsule = _material = _content = null;
-        _bars = null;
-        _barGeometries = [];
-        _page = null;
-        _p = null;
-        _target = null;
-        _compositor = null;
-        Native.Release(_d2d);
-        _d2d = 0;
-
-        // Очередь закрывается асинхронно на цикле сообщений потока (за миллисекунды); результат не ждём.
-        if (_queue is { } queue)
+        finally
         {
-            _queue = null;
-            _ = queue.ShutdownQueueAsync();
+            // Даже если закрытие объектов бросило, фабрика и очередь потока не должны пережить сцену.
+            _root = _capsule = _material = _content = null;
+            _bars = null;
+            _barGeometries = [];
+            _page = null;
+            _p = null;
+            _target = null;
+            _compositor = null;
+            Native.Release(_d2d);
+            _d2d = 0;
+
+            // Очередь закрывается асинхронно на цикле сообщений потока (за миллисекунды); результат не ждём.
+            if (_queue is { } queue)
+            {
+                _queue = null;
+                _ = queue.ShutdownQueueAsync();
+            }
         }
     }
 

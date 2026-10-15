@@ -305,6 +305,52 @@ public class OverlayWindowIntegrationTests
     });
 
     [Fact]
+    public void SettingChange_ImmersiveColorSet_ReappliesMaterialWhileVisible() => OnStaThread(() =>
+    {
+        using var overlay = new OverlayWindow(() => 0);
+        var material = OverlayMaterial.Acrylic;
+        overlay.MaterialOverride = () => material;
+        overlay.ShowRecording();
+        try
+        {
+            Assert.Equal(OverlayMaterial.Acrylic, overlay.Material);
+
+            material = OverlayMaterial.Solid; // например, выключили «Эффекты прозрачности»
+            TestWindows.SendSettingChange(overlay.Handle, "Policy");
+            Assert.Equal(OverlayMaterial.Acrylic, overlay.Material); // чужой раздел настроек материал не трогает
+
+            TestWindows.SendSettingChange(overlay.Handle, "ImmersiveColorSet");
+            Assert.Equal(OverlayMaterial.Solid, overlay.Material);
+        }
+        finally
+        {
+            overlay.Hide();
+            WaitReleased(overlay);
+        }
+    });
+
+    [Fact]
+    public void ReducedMotion_FadesInAndOut_AndReleasesWithoutTheSafetyTimer() => OnStaThread(() =>
+    {
+        using var overlay = new OverlayWindow(() => 0.5f);
+        overlay.ReducedMotionOverride = () => true;
+        overlay.ShowRecording();
+        TestWindows.Pump(300);
+        Assert.True(overlay.SceneReducedMotion);
+        Assert.True(TestWindows.IsVisible(overlay.Handle));
+        overlay.ShowMessage("Речь не распознана", OverlayTone.Info); // смена содержимого без растворения
+        TestWindows.Pump(200);
+
+        var hiddenAt = Environment.TickCount64;
+        overlay.Hide();
+        WaitReleased(overlay);
+
+        // Растворение 150 мс: сцена освобождена по концу анимации, а не страховочным таймером (1,5 с).
+        Assert.InRange(Environment.TickCount64 - hiddenAt, 0, 1200);
+        Assert.False(TestWindows.IsVisible(overlay.Handle));
+    });
+
+    [Fact]
     public void HiddenOverlay_IsNotRaisedOrShownAgain() => OnStaThread(() =>
     {
         using var overlay = new OverlayWindow(() => 0);
