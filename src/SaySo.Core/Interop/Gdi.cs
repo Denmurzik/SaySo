@@ -6,7 +6,7 @@ internal static unsafe partial class Native
 {
     public const int TRANSPARENT = 1;
     public const uint DT_LEFT = 0x0, DT_SINGLELINE = 0x20, DT_NOPREFIX = 0x800, DT_END_ELLIPSIS = 0x8000, DT_CENTER = 0x1, DT_VCENTER = 0x4;
-    public const int FW_SEMIBOLD = 600, FW_NORMAL = 400;
+    public const int FW_NORMAL = 400;
     public const uint ANTIALIASED_QUALITY = 4;
 
     [StructLayout(LayoutKind.Sequential)]

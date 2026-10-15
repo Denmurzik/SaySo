@@ -30,6 +30,15 @@ public class LaunchOptionsTests
     }
 
     [Fact]
+    public void OverlayDemo_WithReportFileAndCycles()
+    {
+        Assert.Equal(new LaunchOptions(LaunchMode.OverlayDemo), LaunchOptions.Parse(["--overlay-demo"]));
+        Assert.Equal(new LaunchOptions(LaunchMode.OverlayDemo, OutPath: "m.txt", Cycles: 3),
+            LaunchOptions.Parse(["--overlay-demo", "--out", "m.txt", "--cycles", "3"]));
+        Assert.Equal(new LaunchOptions(LaunchMode.OverlayDemo), LaunchOptions.Parse(["--overlay-demo", "--cycles", "0"]));
+    }
+
+    [Fact]
     public void CheckUpdates_WithAndWithoutReportFile()
     {
         Assert.Equal(new LaunchOptions(LaunchMode.CheckUpdates), LaunchOptions.Parse(["--check-updates"]));

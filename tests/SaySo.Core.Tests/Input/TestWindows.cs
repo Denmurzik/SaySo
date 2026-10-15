@@ -41,6 +41,17 @@ internal static unsafe partial class TestWindows
 
     public static bool IsTopmost(nint hwnd) => (GetWindowLongPtrW(hwnd, GWL_EXSTYLE) & WS_EX_TOPMOST) != 0;
 
+    public static long ExStyle(nint hwnd) => GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+
+    /// <summary>WM_SETTINGCHANGE с именем раздела, как его рассылает Windows (например, «ImmersiveColorSet»).</summary>
+    public static void SendSettingChange(nint hwnd, string area)
+    {
+        fixed (char* p = area)
+        {
+            SendMessageW(hwnd, 0x001A, 0, (nint)p);
+        }
+    }
+
     /// <summary>true — <paramref name="upper"/> выше <paramref name="lower"/> в порядке окон верхнего уровня.</summary>
     public static bool IsAbove(nint upper, nint lower)
     {
@@ -98,6 +109,9 @@ internal static unsafe partial class TestWindows
 
     [LibraryImport("user32.dll")]
     private static partial nint GetWindowLongPtrW(nint hwnd, int index);
+
+    [LibraryImport("user32.dll")]
+    private static partial nint SendMessageW(nint hwnd, uint msg, nuint wParam, nint lParam);
 
     [LibraryImport("user32.dll")]
     private static partial int GetWindowTextLengthW(nint hwnd);

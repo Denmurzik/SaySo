@@ -12,3 +12,7 @@ PropVariantClear
 PKEY_Device_FriendlyName
 WAVEFORMATEX
 DEVICE_STATE
+D2D1CreateFactory
+ID2D1Factory
+ID2D1PathGeometry
+ID2D1GeometrySink

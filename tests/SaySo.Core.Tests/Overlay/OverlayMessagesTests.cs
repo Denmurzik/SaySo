@@ -2,6 +2,7 @@ using SaySo.Core.Audio.Wasapi;
 using SaySo.Core.Engines;
 using SaySo.Core.Input;
 using SaySo.Core.Overlay;
+using SaySo.Core.Platform;
 
 namespace SaySo.Core.Tests.Overlay;
 
@@ -19,11 +20,10 @@ public class OverlayMessagesTests
         var checkedStrings = 0;
         foreach (var text in OverlayMessages.All().Distinct())
         {
-            // Огромный лимит: многоточие не ставится, ширина маски — настоящая ширина текста (+2 px запаса RenderText).
-            var mask = GdiTextMask.RenderText(text, FontPx, 10_000);
-            Assert.True(mask.Width > 0, "GDI не вернул маску (шрифт или GDI недоступны): " + text);
-            var width = mask.Width - 2;
-            TestContext.Current.TestOutputHelper?.WriteLine($"{width,4} px  {text}");
+            // Та же раскладка, что рисует плашка: продвижения глифов обычного начертания без хинтинга.
+            var width = GlyphText.Measure(text, FontPx);
+            Assert.True(width > 0, "GDI не вернул ширину (шрифт или GDI недоступны): " + text);
+            TestContext.Current.TestOutputHelper?.WriteLine($"{width,6:F1} px  {text}");
             if (width > OverlayMessages.MaxTextWidthPx)
             {
                 tooWide.Add($"{width} px: {text}");
@@ -38,7 +38,7 @@ public class OverlayMessagesTests
 
     [Fact]
     public void OverlayWidthLimit_IsInsideWhatOverlayWindowDraws() =>
-        Assert.InRange(OverlayMessages.MaxTextWidthPx, 1, 400); // OverlayWindow.ShowMessage: RenderText(…, 400 · scale)
+        Assert.InRange(OverlayMessages.MaxTextWidthPx, 1, (int)OverlayMotion.MaxTextWidth); // плашка обрезает текст по 400 DIP
 
     [Fact]
     public void EveryOverlayString_HasNoTrailingPeriod_AndNoEnglishOnlyText()

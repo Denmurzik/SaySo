@@ -12,7 +12,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0--or--later-green" alt="GPL-3.0-or-later"></a>
 </p>
 <p align="center"><a href="README.ru.md">🇷🇺 Читать на русском</a></p>
-<p align="center"><img src="docs/assets/overlay-demo.png" alt="SaySo overlay: recording, then processing"></p>
+<p align="center"><img src="docs/assets/overlay-demo.png" alt="SaySo overlay: slides up as a circle that stretches into a capsule, records, processes, shows an error and an info message, then slides away"></p>
 
 ## Why SaySo
 
@@ -47,14 +47,14 @@ The hotkey, language, model, vocabulary and microphone are configurable.
 
 ### Overlay and tray
 
-The overlay is drawn by the same renderer the app uses (the animation at the top shows recording, then processing). Error and info messages are one short line; the full text of an error is in the tray icon's tooltip. The overlay always stays on top of other windows (including other "always on top" ones) without taking focus; the Start menu and system flyouts stay above it, which a normal app cannot change. If a recording contains no speech (silence, too short, or an empty result), the overlay shows the info message «Речь не распознана» ("Speech not recognized"), with no error sound, and nothing is pasted or saved to history. If the microphone drops out mid-recording and nothing was captured, the microphone error is shown instead.
+The animation at the top is a real screen recording of the overlay. It slides up from the bottom edge of the screen with a gentle spring, as a circle that stretches into a capsule; the level bars follow your voice, three dots pulse while the text is processed, and switching between states crossfades the content. The capsule is real Windows 11 Acrylic (the windows behind it are blurred and tinted) with a one-pixel border like Windows 11 windows. On Windows 10, with *Transparency effects* off or in battery saver it uses a solid dark background, and with *Animation effects* off in Windows it simply fades in and out. The text is regular Segoe UI Variable. Error and info messages are one short line; the full text of an error is in the tray icon's tooltip. The overlay always stays on top of other windows (including other "always on top" ones) without taking focus; the Start menu and system flyouts stay above it, which a normal app cannot change. If a recording contains no speech (silence, too short, or an empty result), the overlay shows the info message «Речь не распознана» ("Speech not recognized"), with no error sound, and nothing is pasted or saved to history. If the microphone drops out mid-recording and nothing was captured, the microphone error is shown instead.
 
 | State | Overlay |
 |---|---|
-| Recording — the bars follow your voice | <img src="docs/assets/overlay-recording.png" width="112" alt="Overlay: recording"> |
-| Processing — the text is being recognized and cleaned up | <img src="docs/assets/overlay-processing.png" width="112" alt="Overlay: processing"> |
-| Error — for example, the key hit its limit and no fallback is set up | <img src="docs/assets/overlay-error.png" width="339" alt="Overlay: error message"> |
-| Info — for example, the text came from the Groq fallback | <img src="docs/assets/overlay-info.png" width="297" alt="Overlay: info message"> |
+| Recording — the bars follow your voice | <img src="docs/assets/overlay-recording.png" width="132" alt="Overlay: recording"> |
+| Processing — the text is being recognized and cleaned up | <img src="docs/assets/overlay-processing.png" width="132" alt="Overlay: processing"> |
+| Error — for example, the key hit its limit and no fallback is set up | <img src="docs/assets/overlay-error.png" width="336" alt="Overlay: error message"> |
+| Info — for example, the text came from the Groq fallback | <img src="docs/assets/overlay-info.png" width="298" alt="Overlay: info message"> |
 
 The tray menu (right-click the icon):
 
@@ -103,7 +103,7 @@ SaySo checks GitHub Releases for a newer version and can install it in one click
 - **One click.** Click the notification, the menu item or the button: SaySo downloads `SaySo-Setup-X.Y.Z.exe` into `%TEMP%\SaySo-Update`, checks its size and SHA-256 against the `.sha256` file of the same release (on a mismatch it deletes the file and starts nothing), starts the installer silently and waits for it. The installer closes SaySo itself, installs over the old version and starts SaySo again as the original user. The mode is the one you installed in, read from the installer's uninstall entry: *only for me* updates without any prompt; for *for all users* the installer itself asks Windows for administrator rights (UAC) — if you decline, SaySo shows «Обновление отменено» and keeps running. A failed update rolls back, and the previous SaySo is started again.
 - **When SaySo cannot install by itself.** If SaySo runs as administrator (admin mode), if the copy was not installed by the installer (the ZIP, `install.ps1`) or if the release has no installer files, nothing is downloaded or started: the notification reads «Доступна версия X.Y.Z. Скачайте установщик со страницы релиза», the menu item becomes «Страница релиза X.Y.Z», the About button «Открыть страницу релиза», and they open the release page — install the new version by hand.
 - **What leaves your PC.** One request `GET https://api.github.com/repos/Denmurzik/SaySo/releases/latest` (headers `User-Agent: SaySo/<version>` and `Accept: application/vnd.github+json`, no token, 15 s timeout) and the download of the installer and its `.sha256` from `github.com/Denmurzik/SaySo/releases/…`. As with any web request, GitHub sees your IP address. Keys, texts and audio are not sent.
-- **Diagnostics.** `SaySo.exe --check-updates --out result.txt` makes one check without the daemon, windows or tray and writes one line to the file: `current=0.1.2 outcome=UpToDate`, `outcome=Available latest=X.Y.Z installable=True|False …` or `outcome=Failed failure=Network|Timeout|RateLimited|BadResponse`. Exit code: 0 — the check was made, 2 — it failed, 3 — unexpected error. `--out` is needed because `SaySo.exe` has no console window. The command does not change `update-state.json` or `settings.json`.
+- **Diagnostics.** `SaySo.exe --check-updates --out result.txt` makes one check without the daemon, windows or tray and writes one line to the file: `current=0.1.3 outcome=UpToDate`, `outcome=Available latest=X.Y.Z installable=True|False …` or `outcome=Failed failure=Network|Timeout|RateLimited|BadResponse`. Exit code: 0 — the check was made, 2 — it failed, 3 — unexpected error. `--out` is needed because `SaySo.exe` has no console window. The command does not change `update-state.json` or `settings.json`.
 
 ### Build from source
 
@@ -154,7 +154,7 @@ Windows does not let a normal app paste into windows running as administrator (e
 
 ## Memory footprint
 
-Measured on Windows 11 (x64), NativeAOT Release build:
+Measured on Windows 11 (x64), NativeAOT Release build. The rows below were measured on 0.1.2; the overlay of 0.1.3 is measured separately after the table:
 
 | Process | Private bytes | Working set |
 |---|---|---|
@@ -163,9 +163,11 @@ Measured on Windows 11 (x64), NativeAOT Release build:
 | Settings window (open, 6 s after launch) | 93.4 MB | 147.5 MB |
 | Settings window (closed) | process exits | process exits |
 
-Publish size: 68.9 MB (`SaySo.exe` is 11.9 MB, of which about 2 MB are the built-in sounds). All sizes here are in mebibytes (1 MB = 1,048,576 bytes), the way `build.ps1` and the measuring scripts print them.
+Publish size: 69.2 MB (`SaySo.exe` is 12.2 MB, of which about 2 MB are the built-in sounds). All sizes here are in mebibytes (1 MB = 1,048,576 bytes), the way `build.ps1` and the measuring scripts print them.
 
 The daemon trims its working set after start and after each session, so its working set stays below 1 MB and *Private bytes* is the more telling column; the settings window is not trimmed. The dictation row was measured without a completed recognition: a real dictation adds network buffers (WebSocket/TLS/HTTP), so expect somewhat more.
+
+The overlay exists only while it is on screen: its compositor, visuals and dispatcher queue are created when it appears and released after it slides away, with no timers left. `SaySo.exe --overlay-demo --out result.txt [--cycles N]` runs the overlay through all its states with the same code as the daemon (without the hotkey, tray or the single-instance lock, so it can run next to a working SaySo) and writes the private memory of that process (not the daemon, which is 6.9 MB at idle) to the file: 6.6 MB before the first show, 7.3–7.8 MB while it is visible, 7.4 MB after it hides and the memory is trimmed, and the same after every following session (about +0.8 MB once; measured over 3 sessions).
 
 ## Build & test
 
@@ -173,6 +175,7 @@ The daemon trims its working set after start and after each session, so its work
 dotnet test --project tests/SaySo.Core.Tests --filter-not-trait "Category=Integration"   # unit tests
 dotnet test --project tests/SaySo.Core.Tests --filter-trait "Category=Integration"       # mic / clipboard / hook
 dotnet run --project tools/SaySo.Probe -- gemini --wav <file.wav> --realtime            # raw protocol probe
+dotnet run --project tools/SaySo.Probe -- overlay-capture --exe artifacts/publish/SaySo.exe --out-dir docs/assets   # overlay recording for this README
 ```
 
 Architecture, decisions and the protocol notes: [`docs/superpowers/specs`](docs/superpowers/specs), [`docs/protocol-notes.md`](docs/protocol-notes.md).

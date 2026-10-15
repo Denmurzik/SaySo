@@ -109,6 +109,14 @@ internal sealed class DaemonHost : IDisposable
         _window.PowerResumed += _updates.OnResume;
         _window.ThemeChanged += RefreshIcons;
         _dictation.SessionEnded += OnSessionEnded;
+        // Плашка освобождает компоновщик только после анимации скрытия (сообщение висит до 3 с): память возвращаем после этого.
+        _overlay.Released += () =>
+        {
+            if (!_disposing)
+            {
+                ScheduleTrim(TimeSpan.FromSeconds(1));
+            }
+        };
         UpdateTray(TrayState.Idle);
         ScheduleTrim(TimeSpan.FromSeconds(3));
         _updates.OnStart(); // одноразовый таймер на 60 с, если с прошлой проверки прошли сутки
