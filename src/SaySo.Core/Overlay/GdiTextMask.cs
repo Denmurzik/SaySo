@@ -9,7 +9,7 @@ namespace SaySo.Core.Overlay;
 /// </summary>
 public static unsafe class GdiTextMask
 {
-    private const string TextFont = "Segoe UI Variable Text";
+    private const string TextFont = OverlayMotion.FontFace;
 
     /// <summary>
     /// Растеризует однострочный текст. Контракт: вызывающий передаёт <paramref name="maxWidthPx"/> не больше
@@ -18,7 +18,7 @@ public static unsafe class GdiTextMask
     /// </summary>
     public static TextMask RenderText(string text, int fontPx, int maxWidthPx)
     {
-        return Render(TextFont, fontPx, Native.FW_NORMAL, dc =>
+        return Render(TextFont, fontPx, OverlayMotion.FontWeight, dc =>
         {
             Native.SIZE size = default;
             bool ok;
@@ -53,7 +53,7 @@ public static unsafe class GdiTextMask
 
         try
         {
-            var font = Native.CreateFontW(-13, 0, 0, 0, Native.FW_NORMAL, 0, 0, 0, 1, 0, 0, Native.ANTIALIASED_QUALITY, 0, face);
+            var font = Native.CreateFontW(-13, 0, 0, 0, OverlayMotion.FontWeight, 0, 0, 0, 1, 0, 0, Native.ANTIALIASED_QUALITY, 0, face);
             if (font == 0)
             {
                 return "";
@@ -79,7 +79,10 @@ public static unsafe class GdiTextMask
     }
 
     /// <summary>Установлен ли шрифт плашки (GDI не подставил другой).</summary>
-    internal static bool IsTextFontAvailable() => ResolvedTextFace().StartsWith(TextFont, StringComparison.OrdinalIgnoreCase);
+    internal static bool IsTextFontAvailable() => IsFontAvailable(TextFont);
+
+    /// <summary>Установлен ли шрифт <paramref name="face"/> (GDI не подставил вместо него другой).</summary>
+    internal static bool IsFontAvailable(string face) => ResolvedTextFace(face).StartsWith(face, StringComparison.OrdinalIgnoreCase);
 
     public static TextMask RenderGlyph(char glyph, string fontFace, int sizePx)
     {

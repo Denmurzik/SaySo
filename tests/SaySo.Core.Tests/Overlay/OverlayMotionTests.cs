@@ -70,6 +70,66 @@ public class OverlayMotionTests
     }
 
     [Fact]
+    public void ClipAndBorderExpressions_ComputeTheSameAsCSharpFunctions()
+    {
+        for (var p = -0.1f; p <= 1.15f; p += 0.05f)
+        {
+            var vars = new Dictionary<string, float>
+            {
+                ["p.Progress"] = p,
+                ["p.Width"] = 250f,
+                ["p.Height"] = 36f,
+                ["p.MaxWidth"] = 480f,
+            };
+            var clip = OverlayMotion.ClipRect(p, 36f, 250f, 480f);
+            var border = OverlayMotion.BorderRect(p, 36f, 250f, 480f);
+
+            AssertVector((clip.Width, clip.Height), EvalVector2(OverlayMotion.Expressions.ClipSize, vars));
+            AssertVector((clip.X, clip.Y), EvalVector2(OverlayMotion.Expressions.ClipOffset, vars));
+            AssertVector((border.Width, border.Height), EvalVector2(OverlayMotion.Expressions.BorderSize, vars));
+            AssertVector((border.X, border.Y), EvalVector2(OverlayMotion.Expressions.BorderOffset, vars));
+        }
+    }
+
+    [Fact]
+    public void ClipIsOnePixelInside_AndBorderSitsOnTheOuterPixel()
+    {
+        var clip = OverlayMotion.ClipRect(1f, 36f, 112f, 480f);
+        var border = OverlayMotion.BorderRect(1f, 36f, 112f, 480f);
+
+        Assert.Equal(new OverlayRect(185f, 1f, 110f, 34f), clip);
+        Assert.Equal(new OverlayRect(184.5f, 0.5f, 111f, 35f), border); // обводка 1 px с центром на 0,5 px — ровно внешний пиксель
+    }
+
+    [Fact]
+    public void FitText_KeepsEverythingThatFits_WithoutEllipsis() =>
+        Assert.Equal((3, false), OverlayMotion.FitText([10f, 10f, 10f], [false, false, false], 8f, 30f));
+
+    [Fact]
+    public void FitText_CutsSoThatTextWithEllipsisFits()
+    {
+        float[] advances = [10f, 10f, 10f, 10f, 10f];
+        var (keep, ellipsis) = OverlayMotion.FitText(advances, new bool[5], 8f, 35f);
+
+        Assert.True(ellipsis);
+        Assert.Equal(2, keep); // 10 + 10 + 8 ≤ 35, а 10·3 + 8 уже нет
+    }
+
+    [Fact]
+    public void FitText_DropsSpacesBeforeEllipsis()
+    {
+        // «ab cd»: влезает «ab » + «…», пробел перед многоточием убирается.
+        var (keep, ellipsis) = OverlayMotion.FitText([10f, 10f, 4f, 10f, 10f], [false, false, true, false, false], 8f, 33f);
+
+        Assert.True(ellipsis);
+        Assert.Equal(2, keep);
+    }
+
+    [Fact]
+    public void FitText_WhenNothingFits_LeavesOnlyEllipsis() =>
+        Assert.Equal((0, true), OverlayMotion.FitText([50f, 50f], [false, false], 8f, 5f));
+
+    [Fact]
     public void Expressions_DoNotUseLerp_WhichClampsAndHidesOvershoot()
     {
         Assert.DoesNotContain("Lerp", OverlayMotion.Expressions.Width);
@@ -197,6 +257,32 @@ public class OverlayMotionTests
     [InlineData(22631, true, false, false, OverlayMaterial.Solid)] // DWM не принял атрибут
     public void Material_FallsBackToSolid(int build, bool transparency, bool batterySaver, bool accepted, OverlayMaterial expected) =>
         Assert.Equal(expected, OverlayMotion.ChooseMaterial(build, transparency, batterySaver, accepted));
+
+    private static void AssertVector((float X, float Y) expected, (float X, float Y) actual)
+    {
+        Assert.Equal(expected.X, actual.X, 3);
+        Assert.Equal(expected.Y, actual.Y, 3);
+    }
+
+    /// <summary>«Vector2(a, b)»: компоненты вычисляются по отдельности.</summary>
+    private static (float X, float Y) EvalVector2(string expression, IReadOnlyDictionary<string, float> vars)
+    {
+        const string Prefix = "Vector2(";
+        Assert.StartsWith(Prefix, expression);
+        Assert.EndsWith(")", expression);
+        var inner = expression[Prefix.Length..^1];
+        var depth = 0;
+        for (var i = 0; i < inner.Length; i++)
+        {
+            depth += inner[i] == '(' ? 1 : inner[i] == ')' ? -1 : 0;
+            if (inner[i] == ',' && depth == 0)
+            {
+                return (Eval(inner[..i], vars), Eval(inner[(i + 1)..], vars));
+            }
+        }
+
+        throw new Xunit.Sdk.XunitException("в Vector2 нет второй компоненты: " + expression);
+    }
 
     // ---------- вычислитель строк ExpressionAnimation (числа, + − × /, скобки, Clamp, p.Свойство) ----------
 

@@ -1,4 +1,6 @@
+using System.Text;
 using SaySo.Core.Interop;
+using SaySo.Core.Overlay;
 using Windows.Win32.Graphics.Direct2D;
 using Windows.Win32.Graphics.Direct2D.Common;
 
@@ -9,90 +11,171 @@ namespace SaySo.Core.Platform;
 /// путь Direct2D — нужна только фабрика D2D, устройство D3D не создаётся (оно держало бы в процессе драйвер видеокарты,
 /// +25 МБ). DWM рисует путь как фигуру со сглаживанием серым.
 /// </summary>
+/// <remarks>
+/// Шрифт — <see cref="OverlayMotion.FontFace"/>, а если его нет (Windows 10) — <see cref="OverlayMotion.FallbackFontFace"/>.
+/// Символы, которых нет в основном шрифте, берутся из запасного; символы вне BMP (суррогатные пары) GDI без Uniscribe
+/// не отображает — на пару ставится один пустой глиф (.notdef), пара не разрывается.
+/// </remarks>
 internal static unsafe class GlyphText
 {
-    internal const string Face = "Segoe UI Variable Text";
-    private const int Weight = 400; // обычное начертание
     private const int Oversample = 16; // контуры снимаются в 16× размере: дробные продвижения и точная форма
-    private const char Ellipsis = '…';
+    private const ushort Missing = 0xFFFF;
+    private const uint GGI_MARK_NONEXISTING_GLYPHS = 1;
+
+    private static readonly Lazy<string> PrimaryFace = new(() =>
+        GdiTextMask.IsFontAvailable(OverlayMotion.FontFace) ? OverlayMotion.FontFace : OverlayMotion.FallbackFontFace);
 
     private static Native.MAT2 Identity => new() { eM11 = 0x10000, eM22 = 0x10000 };
+
+    /// <summary>Глиф строки: индекс в шрифте (0 — основной, 1 — запасной), продвижение и пробел ли это.</summary>
+    private readonly record struct Glyph(ushort Index, int Font, float Advance, bool Space);
 
     /// <summary>Ширина строки в пикселях (без многоточия). 0 — сбой GDI.</summary>
     public static float Measure(string text, int fontPx)
     {
-        using var font = new FontScope(fontPx);
-        return font.Ok ? font.Advances(font.Glyphs(text)).Sum() : 0f;
+        using var fonts = new Fonts(fontPx);
+        return fonts.Ok ? Shape(fonts, text).Sum(g => g.Advance) : 0f;
     }
 
     /// <summary>
     /// Путь строки: начало — x = 0, середина строки — <paramref name="centerY"/>. Длиннее <paramref name="maxWidth"/> —
-    /// обрезается с многоточием. null — сбой GDI (плашка покажется без текста).
+    /// обрезается с многоточием (<see cref="OverlayMotion.FitText"/>). null — сбой GDI или D2D (плашка покажется без текста).
     /// </summary>
     public static ID2D1PathGeometry* Build(ID2D1Factory* factory, string text, int fontPx, float maxWidth, float centerY, out float width)
     {
         width = 0;
-        using var font = new FontScope(fontPx);
-        if (!font.Ok)
+        using var fonts = new Fonts(fontPx);
+        if (!fonts.Ok)
         {
             return null;
         }
 
-        var glyphs = font.Glyphs(text);
-        var advances = font.Advances(glyphs);
-        var total = advances.Sum();
-        if (total > maxWidth)
+        var glyphs = Shape(fonts, text);
+        var ellipsis = Shape(fonts, "…")[0];
+        var (keep, cut) = OverlayMotion.FitText(
+            glyphs.Select(g => g.Advance).ToArray(), glyphs.Select(g => g.Space).ToArray(), ellipsis.Advance, maxWidth);
+        if (cut)
         {
-            var ellipsis = font.Glyphs(Ellipsis.ToString());
-            var ellipsisAdvance = font.Advances(ellipsis)[0];
-            var n = glyphs.Length;
-            while (n > 0 && total + ellipsisAdvance > maxWidth)
-            {
-                total -= advances[--n];
-            }
-
-            glyphs = [.. glyphs.AsSpan(0, n), ellipsis[0]];
-            advances = [.. advances.AsSpan(0, n), ellipsisAdvance];
-            total += ellipsisAdvance;
+            glyphs = [.. glyphs.AsSpan(0, keep), ellipsis];
         }
 
         ID2D1PathGeometry* path;
-        factory->CreatePathGeometry(&path);
+        var hr = (*(ID2D1Factory.Vtbl**)factory)->CreatePathGeometry_11(factory, &path);
+        if (hr.Failed)
+        {
+            PlatformLog.Info($"ID2D1Factory.CreatePathGeometry: 0x{hr.Value:X8}");
+            return null;
+        }
+
         ID2D1GeometrySink* sink;
-        path->Open(&sink);
-        try
+        hr = (*(ID2D1PathGeometry.Vtbl**)path)->Open_18(path, &sink);
+        if (hr.Failed)
         {
-            sink->SetFillMode(D2D1_FILL_MODE.D2D1_FILL_MODE_WINDING);
-            var baseline = centerY - font.LineHeight / 2f + font.Ascent;
-            var pen = 0f;
-            for (var i = 0; i < glyphs.Length; i++)
-            {
-                font.Outline(glyphs[i], sink, pen, baseline);
-                pen += advances[i];
-            }
-
-            sink->Close();
-        }
-        finally
-        {
-            Native.Release((nint)sink);
+            PlatformLog.Info($"ID2D1PathGeometry.Open: 0x{hr.Value:X8}");
+            Native.Release((nint)path);
+            return null;
         }
 
-        width = total;
+        sink->SetFillMode(D2D1_FILL_MODE.D2D1_FILL_MODE_WINDING);
+        var baseline = centerY - fonts.LineHeight / 2f + fonts.Ascent;
+        var pen = 0f;
+        foreach (var glyph in glyphs)
+        {
+            fonts.Outline(glyph, sink, pen, baseline);
+            pen += glyph.Advance;
+        }
+
+        hr = (*(ID2D1GeometrySink.Vtbl**)sink)->Close_10(sink);
+        Native.Release((nint)sink);
+        if (hr.Failed)
+        {
+            PlatformLog.Info($"ID2D1GeometrySink.Close: 0x{hr.Value:X8}");
+            Native.Release((nint)path);
+            return null;
+        }
+
+        width = pen;
         return path;
     }
 
-    /// <summary>Контекст GDI с выбранным шрифтом плашки в <see cref="Oversample"/>× размере.</summary>
-    private readonly struct FontScope : IDisposable
+    /// <summary>Глифы строки по символам Юникода (руны): основной шрифт, затем запасной, иначе пустой глиф.</summary>
+    private static Glyph[] Shape(Fonts fonts, string text)
+    {
+        var glyphs = new List<Glyph>(text.Length);
+        foreach (var rune in text.EnumerateRunes())
+        {
+            var (index, font) = (Missing, 0);
+            if (rune.IsBmp)
+            {
+                index = fonts.Index(0, (char)rune.Value);
+                if (index == Missing)
+                {
+                    (index, font) = (fonts.Index(1, (char)rune.Value), 1);
+                }
+            }
+
+            if (index == Missing)
+            {
+                (index, font) = (0, 0); // .notdef основного шрифта
+            }
+
+            glyphs.Add(new Glyph(index, font, fonts.Advance(font, index), Rune.IsWhiteSpace(rune)));
+        }
+
+        return [.. glyphs];
+    }
+
+    /// <summary>Основной и (по требованию) запасной шрифт плашки в <see cref="Oversample"/>× размере.</summary>
+    private sealed class Fonts : IDisposable
+    {
+        private readonly int _fontPx;
+        private readonly Face _primary;
+        private Face? _fallback;
+
+        public Fonts(int fontPx)
+        {
+            _fontPx = fontPx;
+            _primary = new Face(PrimaryFace.Value, fontPx);
+        }
+
+        public bool Ok => _primary.Ok;
+
+        public float Ascent => _primary.Ascent;
+
+        public float LineHeight => _primary.LineHeight;
+
+        private Face At(int font) => font == 0 ? _primary : _fallback ??= new Face(OverlayMotion.FallbackFontFace, _fontPx);
+
+        public ushort Index(int font, char c)
+        {
+            var face = At(font);
+            return face.Ok ? face.Index(c) : Missing;
+        }
+
+        public float Advance(int font, ushort index) => At(font).Advance(index);
+
+        public void Outline(Glyph glyph, ID2D1GeometrySink* sink, float x0, float baseline) =>
+            At(glyph.Font).Outline(glyph.Index, sink, x0, baseline);
+
+        public void Dispose()
+        {
+            _primary.Dispose();
+            _fallback?.Dispose();
+        }
+    }
+
+    /// <summary>Контекст GDI с выбранным шрифтом.</summary>
+    private sealed class Face : IDisposable
     {
         private readonly nint _dc;
         private readonly nint _font;
         private readonly nint _old;
 
-        public FontScope(int fontPx)
+        public Face(string face, int fontPx)
         {
             _dc = Native.CreateCompatibleDC(0);
-            _font = _dc == 0 ? 0 : Native.CreateFontW(-fontPx * Oversample, 0, 0, 0, Weight, 0, 0, 0, 1, 0, 0, Native.ANTIALIASED_QUALITY, 0, Face);
+            _font = _dc == 0 ? 0 : Native.CreateFontW(-fontPx * Oversample, 0, 0, 0, OverlayMotion.FontWeight, 0, 0, 0, 1, 0, 0,
+                Native.ANTIALIASED_QUALITY, 0, face);
             _old = _font == 0 ? 0 : Native.SelectObject(_dc, _font);
             Native.TEXTMETRICW tm = default;
             Ok = _font != 0 && Native.GetTextMetricsW(_dc, &tm);
@@ -106,36 +189,34 @@ internal static unsafe class GlyphText
 
         public float LineHeight { get; }
 
-        public ushort[] Glyphs(string text)
+        public ushort Index(char c)
         {
-            var glyphs = new ushort[text.Length];
-            fixed (char* p = text)
-            fixed (ushort* g = glyphs)
-            {
-                Native.GetGlyphIndicesW(_dc, p, text.Length, g, 0);
-            }
-
-            return glyphs;
+            ushort index;
+            return Native.GetGlyphIndicesW(_dc, &c, 1, &index, GGI_MARK_NONEXISTING_GLYPHS) == Native.GDI_ERROR ? Missing : index;
         }
 
-        public float[] Advances(ushort[] glyphs)
+        public float Advance(ushort index)
         {
-            var advances = new float[glyphs.Length];
-            for (var i = 0; i < glyphs.Length; i++)
+            if (!Ok)
             {
-                Native.GLYPHMETRICS gm;
-                var m = Identity;
-                advances[i] = Native.GetGlyphOutlineW(_dc, glyphs[i], Native.GGO_GLYPH_INDEX | Native.GGO_UNHINTED, &gm, 0, null, &m) == Native.GDI_ERROR
-                    ? 0f
-                    : gm.gmCellIncX / (float)Oversample;
+                return 0f;
             }
 
-            return advances;
+            Native.GLYPHMETRICS gm;
+            var m = Identity;
+            return Native.GetGlyphOutlineW(_dc, index, Native.GGO_GLYPH_INDEX | Native.GGO_UNHINTED, &gm, 0, null, &m) == Native.GDI_ERROR
+                ? 0f
+                : gm.gmCellIncX / (float)Oversample;
         }
 
         /// <summary>Контуры глифа (TTPOLYGONHEADER/TTPOLYCURVE, GGO_BEZIER: линии и кубические кривые) → фигуры пути.</summary>
         public void Outline(ushort glyph, ID2D1GeometrySink* sink, float x0, float baseline)
         {
+            if (!Ok)
+            {
+                return;
+            }
+
             Native.GLYPHMETRICS gm;
             var m = Identity;
             const uint Format = Native.GGO_BEZIER | Native.GGO_GLYPH_INDEX | Native.GGO_UNHINTED;
@@ -165,6 +246,11 @@ internal static unsafe class GlyphText
                 {
                     var header = b + o;
                     var cb = *(uint*)header;
+                    if (cb < 16 || o + cb > size)
+                    {
+                        return; // повреждённые данные: остаток глифа не рисуем
+                    }
+
                     sink->BeginFigure(P(header + 8), D2D1_FIGURE_BEGIN.D2D1_FIGURE_BEGIN_FILLED);
                     var c = header + 16;
                     while (c + 4 <= header + cb)
@@ -172,6 +258,11 @@ internal static unsafe class GlyphText
                         var type = *(ushort*)c;
                         var count = *(ushort*)(c + 2);
                         var points = c + 4;
+                        if (points + count * 8 > header + cb)
+                        {
+                            break;
+                        }
+
                         if (type == 1) // TT_PRIM_LINE
                         {
                             for (var k = 0; k < count; k++)

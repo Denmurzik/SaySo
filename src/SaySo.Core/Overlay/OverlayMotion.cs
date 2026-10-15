@@ -95,6 +95,12 @@ public static class OverlayMotion
 
     public const float FontSize = 13f;
 
+    /// <summary>Шрифт текста плашки (обычное начертание) и запасной — для Windows 10 и символов, которых в нём нет.</summary>
+    public const string FontFace = "Segoe UI Variable Text";
+
+    public const string FallbackFontFace = "Segoe UI";
+    public const int FontWeight = 400;
+
     // ---------- Progress → геометрия ----------
 
     /// <summary>Доля морфинга круг → капсула: smoothstep от (Progress − 0,35) / 0,65, зажатого в [0, 1].</summary>
@@ -113,6 +119,54 @@ public static class OverlayMotion
 
     public static float ContentOpacity(float progress) => Clamp01((progress - ContentStart) / (1f - ContentStart));
 
+    /// <summary>
+    /// Клип тела капсулы: на 1 px внутри края (внешний пиксель занят рамкой). Координаты — в коробке шириной
+    /// <paramref name="maxWidth"/>; центр капсулы по X постоянен.
+    /// </summary>
+    public static OverlayRect ClipRect(float progress, float height, float width, float maxWidth)
+    {
+        var w = CapsuleWidth(progress, height, width);
+        return new OverlayRect((maxWidth - w) / 2f + 1f, 1f, w - 2f, height - 2f);
+    }
+
+    /// <summary>Рамка: обводка в 1 px по внешнему пикселю капсулы (геометрия утоплена на 0,5 px).</summary>
+    public static OverlayRect BorderRect(float progress, float height, float width, float maxWidth)
+    {
+        var w = CapsuleWidth(progress, height, width);
+        return new OverlayRect((maxWidth - w) / 2f + 0.5f, 0.5f, w - 1f, height - 1f);
+    }
+
+    /// <summary>
+    /// Сколько глифов строки поместится в <paramref name="maxWidth"/> и нужно ли многоточие. Если не помещается вся строка,
+    /// отбрасываются последние глифы, пока остаток с многоточием не влезет, и пробелы перед многоточием.
+    /// </summary>
+    public static (int Keep, bool Ellipsis) FitText(ReadOnlySpan<float> advances, ReadOnlySpan<bool> spaces, float ellipsisAdvance, float maxWidth)
+    {
+        var total = 0f;
+        foreach (var advance in advances)
+        {
+            total += advance;
+        }
+
+        if (total <= maxWidth)
+        {
+            return (advances.Length, false);
+        }
+
+        var keep = advances.Length;
+        while (keep > 0 && total + ellipsisAdvance > maxWidth)
+        {
+            total -= advances[--keep];
+        }
+
+        while (keep > 0 && spaces[keep - 1])
+        {
+            keep--;
+        }
+
+        return (keep, true);
+    }
+
     /// <summary>Строки ExpressionAnimation; параметр «p» — набор свойств с Progress, Width, Height, StartY, EndY.</summary>
     public static class Expressions
     {
@@ -127,6 +181,15 @@ public static class OverlayMotion
         public static readonly string Y = "(p.StartY + (p.EndY - p.StartY) * p.Progress)";
 
         public static readonly string ContentOpacity = $"Clamp((p.Progress - {F(ContentStart)}) / {F(1f - ContentStart)}, 0, 1)";
+
+        // Клип и рамка (см. ClipRect и BorderRect); p.MaxWidth — ширина коробки капсулы.
+        public static readonly string ClipSize = $"Vector2({Width} - 2, p.Height - 2)";
+
+        public static readonly string ClipOffset = $"Vector2((p.MaxWidth - {Width}) / 2 + 1, 1)";
+
+        public static readonly string BorderSize = $"Vector2({Width} - 1, p.Height - 1)";
+
+        public static readonly string BorderOffset = $"Vector2((p.MaxWidth - {Width}) / 2 + 0.5, 0.5)";
 
         private static string F(float v) => v.ToString("0.0###", CultureInfo.InvariantCulture);
     }
