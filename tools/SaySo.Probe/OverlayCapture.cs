@@ -13,7 +13,7 @@ namespace SaySo.Probe;
 /// </summary>
 internal static unsafe partial class OverlayCapture
 {
-    private const int Fps = 30;
+    private const int Fps = 40;
 
     public static int Run(string exe, string outDir)
     {
@@ -34,6 +34,7 @@ internal static unsafe partial class OverlayCapture
         _capsuleY = layout.WindowTop + layout.EndY + layout.CapsuleHeight / 2f - (area.Top - pad);
         _unit = layout.CapsuleHeight;
         var backdrop = CreateBackdrop(area.Left - pad, area.Top - pad, area.Right - area.Left + 2 * pad, area.Bottom - area.Top + 2 * pad);
+        timeBeginPeriod(1); // Sleep(1) по 1 мс, а не по 15,6: ровный шаг кадров
         try
         {
             Pump(400);
@@ -88,6 +89,7 @@ internal static unsafe partial class OverlayCapture
         }
         finally
         {
+            timeEndPeriod(1);
             DestroyWindow(backdrop);
         }
 
@@ -184,53 +186,63 @@ internal static unsafe partial class OverlayCapture
 
         PAINTSTRUCT ps;
         var dc = BeginPaint(hwnd, &ps);
-        // Мягкий диагональный градиент «обоев» и несколько цветных кругов: Acrylic размывает их в цветные пятна.
         var w = _backdropWidth;
         var h = _backdropHeight;
-        for (var x = 0; x < w; x += 4)
+        _backdropPixels ??= PaintBackdrop(w, h);
+        var bi = new BITMAPINFOHEADER { biSize = (uint)sizeof(BITMAPINFOHEADER), biWidth = w, biHeight = -h, biPlanes = 1, biBitCount = 32 };
+        fixed (uint* px = _backdropPixels)
         {
-            var t = x / (float)Math.Max(1, w - 1);
-            var color = Mix(0x3B6FB6, 0x8E5BB5, 0xE98A5A, t);
-            var brush = CreateSolidBrush(color);
-            var band = new RECT { Left = x, Top = 0, Right = x + 4, Bottom = h };
-            FillRect(dc, &band, brush);
-            DeleteObject(brush);
+            SetDIBitsToDevice(dc, 0, 0, (uint)w, (uint)h, 0, 0, 0, (uint)h, px, &bi, 0);
         }
 
-        var pen = GetStockObject(8); // NULL_PEN
-        var oldPen = SelectObject(dc, pen);
-        // Круги вокруг места капсулы (в высотах капсулы): часть заходит под неё, и размытие смешивает их цвета.
-        (float X, float Y, float R, int Rgb)[] circles =
-        [
-            (-3.2f, -0.9f, 1.1f, 0x2EC4B6), (1.4f, 1.0f, 1.2f, 0xEF476F), (-0.6f, 1.5f, 0.9f, 0xFFD166),
-            (4.1f, -0.6f, 1.0f, 0x06D6A0), (0.4f, -1.3f, 0.6f, 0xF8F9FA), (-4.6f, 1.0f, 0.8f, 0x118AB2),
-        ];
-        foreach (var c in circles)
-        {
-            var brush = CreateSolidBrush(Bgr(c.Rgb));
-            var old = SelectObject(dc, brush);
-            var r = (int)(c.R * _unit);
-            var cx = (int)(_capsuleX + c.X * _unit);
-            var cy = (int)(_capsuleY + c.Y * _unit);
-            Ellipse(dc, cx - r, cy - r, cx + r, cy + r);
-            SelectObject(dc, old);
-            DeleteObject(brush);
-        }
-
-        SelectObject(dc, oldPen);
         EndPaint(hwnd, &ps);
         return 0;
     }
 
-    private static uint Bgr(int rgb) => (uint)(((rgb & 0xFF) << 16) | (rgb & 0xFF00) | ((rgb >> 16) & 0xFF));
+    private static uint[]? _backdropPixels;
 
-    private static uint Mix(int a, int b, int c, float t)
+    /// <summary>
+    /// «Обои»: диагональный градиент и несколько мягких пятен со сглаженными краями. Пятна заходят под капсулу слева
+    /// и справа — Acrylic смешивает их цвета. Ничего с настоящего экрана в запись не попадает.
+    /// </summary>
+    private static uint[] PaintBackdrop(int w, int h)
     {
-        static int Lerp(int from, int to, float k, int shift) =>
-            (int)(((from >> shift) & 0xFF) + ((((to >> shift) & 0xFF) - ((from >> shift) & 0xFF)) * k));
+        var px = new uint[w * h];
+        (float X, float Y, float R, int Rgb)[] blobs =
+        [
+            (-1.7f, 0.35f, 1.35f, 0x2EC4B6), (2.0f, -0.25f, 1.25f, 0xFFB703), (4.7f, 1.25f, 1.5f, 0xFF6B9A),
+            (-5.0f, -0.9f, 1.1f, 0xA8DADC), (-3.6f, 1.6f, 0.9f, 0x5E60CE),
+        ];
+        for (var y = 0; y < h; y++)
+        {
+            for (var x = 0; x < w; x++)
+            {
+                var t = Math.Clamp((x / (float)w) * 0.8f + (y / (float)h) * 0.2f, 0f, 1f);
+                var (r, g, b) = Gradient(t);
+                foreach (var blob in blobs)
+                {
+                    var dx = x + 0.5f - (_capsuleX + blob.X * _unit);
+                    var dy = y + 0.5f - (_capsuleY + blob.Y * _unit);
+                    var cover = Math.Clamp(blob.R * _unit - MathF.Sqrt(dx * dx + dy * dy) + 0.5f, 0f, 1f) * 0.92f;
+                    r += (((blob.Rgb >> 16) & 0xFF) - r) * cover;
+                    g += (((blob.Rgb >> 8) & 0xFF) - g) * cover;
+                    b += ((blob.Rgb & 0xFF) - b) * cover;
+                }
 
-        var (from, to, k) = t < 0.5f ? (a, b, t * 2) : (b, c, (t - 0.5f) * 2);
-        return Bgr((Lerp(from, to, k, 16) << 16) | (Lerp(from, to, k, 8) << 8) | Lerp(from, to, k, 0));
+                px[y * w + x] = 0xFF000000 | ((uint)r << 16) | ((uint)g << 8) | (uint)b;
+            }
+        }
+
+        return px;
+    }
+
+    private static (float R, float G, float B) Gradient(float t)
+    {
+        // #2B4C7E → #6A4C93 → #E07A5F
+        static float L(int a, int b, float k) => a + (b - a) * k;
+        return t < 0.5f
+            ? (L(0x2B, 0x6A, t * 2), L(0x4C, 0x4C, t * 2), L(0x7E, 0x93, t * 2))
+            : (L(0x6A, 0xE0, (t - 0.5f) * 2), L(0x4C, 0x7A, (t - 0.5f) * 2), L(0x93, 0x5F, (t - 0.5f) * 2));
     }
 
     // ---------- снимок экрана и цикл сообщений ----------
@@ -364,15 +376,15 @@ internal static unsafe partial class OverlayCapture
     [LibraryImport("user32.dll")] private static partial nint DefWindowProcW(nint hwnd, uint msg, nuint wParam, nint lParam);
     [LibraryImport("user32.dll")] private static partial nint BeginPaint(nint hwnd, PAINTSTRUCT* ps);
     [LibraryImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] private static partial bool EndPaint(nint hwnd, PAINTSTRUCT* ps);
-    [LibraryImport("user32.dll")] private static partial int FillRect(nint dc, RECT* r, nint brush);
     [LibraryImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] private static partial bool PeekMessageW(MSG* msg, nint hwnd, uint min, uint max, uint remove);
     [LibraryImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] private static partial bool TranslateMessage(MSG* msg);
     [LibraryImport("user32.dll")] private static partial nint DispatchMessageW(MSG* msg);
     [LibraryImport("user32.dll")] private static partial nint GetDC(nint hwnd);
     [LibraryImport("user32.dll")] private static partial int ReleaseDC(nint hwnd, nint dc);
-    [LibraryImport("gdi32.dll")] private static partial nint CreateSolidBrush(uint color);
-    [LibraryImport("gdi32.dll")] private static partial nint GetStockObject(int index);
-    [LibraryImport("gdi32.dll")] [return: MarshalAs(UnmanagedType.Bool)] private static partial bool Ellipse(nint dc, int l, int t, int r, int b);
+    [LibraryImport("gdi32.dll")]
+    private static partial int SetDIBitsToDevice(nint dc, int x, int y, uint w, uint h, int sx, int sy, uint start, uint lines, void* bits, BITMAPINFOHEADER* bi, uint usage);
+    [LibraryImport("winmm.dll")] private static partial uint timeBeginPeriod(uint ms);
+    [LibraryImport("winmm.dll")] private static partial uint timeEndPeriod(uint ms);
     [LibraryImport("gdi32.dll")] private static partial nint CreateCompatibleDC(nint dc);
     [LibraryImport("gdi32.dll")] private static partial nint CreateDIBSection(nint dc, BITMAPINFOHEADER* bi, uint usage, void** bits, nint section, uint offset);
     [LibraryImport("gdi32.dll")] private static partial nint SelectObject(nint dc, nint obj);

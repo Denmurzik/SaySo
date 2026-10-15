@@ -28,10 +28,10 @@ try
             await ErrorScenarios(opts);
             return 0;
         case "render-demo":
-            RenderDemo(opts.Get("out") ?? "docs/assets/overlay-demo.png");
+            RenderDemo(opts.Get("out") ?? "artifacts/render/overlay-demo.png"); // README показывает запись настоящей плашки (overlay-capture)
             return 0;
         case "render-states":
-            RenderStates(opts.Get("out-dir") ?? "docs/assets");
+            RenderStates(opts.Get("out-dir") ?? "artifacts/render");
             return 0;
         case "overlay-capture":
             return OverlayCapture.Run(opts.Require("exe"), opts.Get("out-dir") ?? "artifacts/overlay-capture");
@@ -236,7 +236,7 @@ static void RenderDemo(string path)
     Console.WriteLine($"OK {path} ({w}×{h}, кадров: {frames.Count})");
 }
 
-/// <summary>Неподвижные состояния оверлея (запись, обработка, ошибка, сообщение) — для README; тот же рендерер и те же тексты, что у демона.</summary>
+/// <summary>Неподвижные состояния, нарисованные пиксельным OverlayRenderer (без компоновщика), с текстами демона. В README — снимки настоящей плашки (overlay-capture).</summary>
 static void RenderStates(string dir)
 {
     const float scale = 2f;
