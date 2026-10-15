@@ -437,6 +437,7 @@ internal sealed unsafe class OverlayScene : IDisposable
     {
         if (ReferenceEquals(page, _bars))
         {
+            page.StopAnimation("Opacity");
             page.Opacity = 0f; // столбики переиспользуются: прячем, не удаляя
             return;
         }
