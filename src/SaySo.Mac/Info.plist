@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Шаблон Info.plist пакета SaySo.app: build-macos.sh подставляет версию вместо @VERSION@. -->
+<plist version="1.0">
+<dict>
+	<key>CFBundleIdentifier</key>
+	<string>io.github.denmurzik.sayso</string>
+	<key>CFBundleName</key>
+	<string>SaySo</string>
+	<key>CFBundleDisplayName</key>
+	<string>SaySo</string>
+	<key>CFBundleExecutable</key>
+	<string>SaySo</string>
+	<key>CFBundleIconFile</key>
+	<string>SaySo</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleShortVersionString</key>
+	<string>@VERSION@</string>
+	<key>CFBundleVersion</key>
+	<string>@VERSION@</string>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>ru</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>12.0</string>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.productivity</string>
+	<!-- Демон живёт в строке меню без значка в Dock; окно настроек включает значок само, пока открыто. -->
+	<key>LSUIElement</key>
+	<true/>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>SaySo записывает речь, пока вы держите горячую клавишу, и отправляет её на распознавание. Аудио не сохраняется на диск.</string>
+	<key>NSHumanReadableCopyright</key>
+	<string>© 2026 Denis Muruev. GPL-3.0-or-later.</string>
+</dict>
+</plist>
