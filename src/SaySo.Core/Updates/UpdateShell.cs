@@ -1,8 +1,10 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using SaySo.Core.Diagnostics;
+#if WINDOWS
 using SaySo.Core.Input;
 using SaySo.Core.Platform;
+#endif
 
 namespace SaySo.Core.Updates;
 
@@ -80,9 +82,13 @@ public static class UpdateShell
         var address = new Uri(url).AbsoluteUri; // в каноническом виде кавычки экранированы: в командную строку попасть не могут
         try
         {
+#if WINDOWS
             var info = ProcessIntegrity.IsElevated
                 ? new ProcessStartInfo(ShellPaths.Explorer, "\"" + address + "\"") { UseShellExecute = false }
                 : new ProcessStartInfo(address) { UseShellExecute = true };
+#else
+            var info = new ProcessStartInfo("/usr/bin/open") { UseShellExecute = false, ArgumentList = { address } };
+#endif
             Process.Start(info)?.Dispose();
             return true;
         }

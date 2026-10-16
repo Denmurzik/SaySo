@@ -1,20 +1,41 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <!-- Проекция Windows SDK (Windows.UI.Composition для плашки) — та же, что у SaySo.exe. -->
-    <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
-    <TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>
-    <WindowsSdkPackageVersion>10.0.26100.57</WindowsSdkPackageVersion>
+    <!--
+      На Windows тесты идут в Windows-цели (как и весь Windows-код), на macOS в переносимой net10.0: там проверяется общее
+      ядро и macOS-ветви (тексты, клавиши, Связка ключей). Windows-цель на macOS не запустить.
+    -->
+    <TargetFrameworks Condition="$([MSBuild]::IsOSPlatform('Windows'))">net10.0-windows10.0.26100.0</TargetFrameworks>
+    <TargetFrameworks Condition="!$([MSBuild]::IsOSPlatform('Windows'))">net10.0</TargetFrameworks>
     <OutputType>Exe</OutputType>
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <RootNamespace>SaySo.Core.Tests</RootNamespace>
   </PropertyGroup>
+  <PropertyGroup Condition="'$(TargetPlatformIdentifier)' == 'windows'">
+    <!-- Проекция Windows SDK (Windows.UI.Composition для плашки) — та же, что у SaySo.exe. -->
+    <TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>
+    <WindowsSdkPackageVersion>10.0.26100.57</WindowsSdkPackageVersion>
+  </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="xunit.v3" Version="4.0.2" />
   </ItemGroup>
   <ItemGroup>
     <Using Include="Xunit" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(TargetPlatformIdentifier)' != 'windows'">
+    <!-- Тесты Windows-кода (WASAPI, хук, окна, трей, буфер обмена, DPAPI, GDI): в переносимой цели этого кода нет. -->
+    <Compile Remove="Audio/WasapiIntegrationTests.cs" />
+    <Compile Remove="Input/InsertionIntegrationTests.cs;Input/KeyboardInjectorTests.cs;Input/ProcessIntegrityTests.cs;Input/TextInserterTests.cs;Input/TestWindows.cs" />
+    <Compile Remove="Overlay/GdiTextMaskTests.cs;Overlay/OverlayMessagesTests.cs" />
+    <Compile Remove="Platform/AdminTaskTests.cs;Platform/AutostartManagerTests.cs;Platform/GlyphTextTests.cs;Platform/HookIntegrationTests.cs;Platform/IpcTests.cs" />
+    <Compile Remove="Platform/OverlayWindowIntegrationTests.cs;Platform/ShellInteropTests.cs;Platform/TrayBalloonTests.cs;Platform/TrayIconRetryTests.cs;Platform/WindowAndSyncTests.cs" />
+    <Compile Remove="Storage/DpapiTests.cs" />
+    <Compile Remove="Updates/UpdateInstallPlanTests.cs" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(TargetPlatformIdentifier)' == 'windows'">
+    <!-- Тесты macOS-кода с путями POSIX (LaunchAgent): на Windows пути нормализуются иначе. -->
+    <Compile Remove="Platform/LaunchAgentTests.cs" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../../src/SaySo.Core/SaySo.Core.csproj" />

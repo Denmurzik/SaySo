@@ -578,7 +578,8 @@ public sealed class UpdateCoordinatorTests : IDisposable
         StartAndFire();
         await Settle(() => _host.Balloons.Count == 1);
 
-        Assert.Equal("Доступна версия 0.2.0. Скачайте установщик со страницы релиза", _host.Balloons[0]);
+        Assert.Equal(UpdateMessages.Available(new Version(0, 2, 0), manual: true), _host.Balloons[0]);
+        Assert.Contains("со страницы релиза", _host.Balloons[0]);
     }
 
     [Fact]
@@ -660,6 +661,7 @@ public sealed class UpdateCoordinatorTests : IDisposable
     [Fact]
     public async Task WhileSetupRuns_FileIsGuarded_SecondRequestIgnored_AndMessageLoopIsNotBlocked()
     {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "Только Windows: защита скачанного Setup от подмены блокировкой файла");
         _host.SetupRunning = new TaskCompletionSource<InstallerRun>();
         ServeRelease();
         await Coordinator.CheckNowAsync();

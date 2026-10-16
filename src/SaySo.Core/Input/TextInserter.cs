@@ -2,15 +2,6 @@ using SaySo.Core.Interop;
 
 namespace SaySo.Core.Input;
 
-public enum InsertOutcome
-{
-    Inserted,
-    BlockedByElevation,
-    ClipboardUnavailable,
-    InputBlocked,
-    NoTarget,
-}
-
 /// <summary>
 /// Вставка текста в окно переднего плана через буфер обмена и Ctrl+V с восстановлением буфера.
 /// Потоковый контракт: каждая операция с буфером (Open/Close) синхронна внутри одного вызова, но
@@ -21,7 +12,7 @@ public enum InsertOutcome
 public sealed class TextInserter
 {
     public static readonly TimeSpan RestoreDelay = TimeSpan.FromMilliseconds(250);
-    public static readonly TimeSpan JoinWindow = TimeSpan.FromSeconds(60);
+    public static readonly TimeSpan JoinWindow = SpaceJoiner.JoinWindow;
 
     private readonly nint _clipboardOwner;
     private readonly TimeProvider _time;

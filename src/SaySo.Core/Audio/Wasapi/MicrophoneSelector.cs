@@ -1,5 +1,8 @@
 namespace SaySo.Core.Audio.Wasapi;
 
+/// <summary>Устройство записи для списка в настройках: идентификатор (Windows: WASAPI, macOS: UID Core Audio) и понятное имя.</summary>
+public sealed record AudioDevice(string Id, string Name);
+
 /// <summary>Конечная точка записи (идентификатор, понятное имя, подключена ли) — вход для <see cref="MicrophoneSelector"/>.</summary>
 public sealed record CaptureEndpoint(string Id, string Name, bool IsActive);
 
@@ -25,6 +28,9 @@ public sealed record MicrophoneResolution(MicrophoneMatch Match, CaptureEndpoint
 /// <summary>Сопоставляет сохранённый выбор микрофона (идентификатор + имя) с подключёнными устройствами.</summary>
 public static class MicrophoneSelector
 {
+    /// <summary>Имя устройства, когда драйвер не отдал настоящее. В настройки не записывается (см. <see cref="NameToRemember"/>).</summary>
+    public const string UnknownDeviceName = "Микрофон";
+
     public static MicrophoneResolution Resolve(string? savedId, string? savedName, IEnumerable<CaptureEndpoint> endpoints)
     {
         var hasId = !string.IsNullOrWhiteSpace(savedId);
@@ -61,12 +67,12 @@ public static class MicrophoneSelector
 
     /// <summary>
     /// Имя, которое стоит сохранить в настройках вместе с идентификатором: null для пустого имени и для имени-заглушки
-    /// (<see cref="WasapiDevices.UnknownDeviceName"/>, когда драйвер не отдал настоящее) — по такому «имени» устройство не узнать.
+    /// (<see cref="UnknownDeviceName"/>, когда драйвер не отдал настоящее) — по такому «имени» устройство не узнать.
     /// </summary>
     public static string? NameToRemember(string? name)
     {
         var trimmed = name?.Trim();
-        return string.IsNullOrEmpty(trimmed) || string.Equals(trimmed, WasapiDevices.UnknownDeviceName, StringComparison.Ordinal)
+        return string.IsNullOrEmpty(trimmed) || string.Equals(trimmed, UnknownDeviceName, StringComparison.Ordinal)
             ? null
             : trimmed;
     }

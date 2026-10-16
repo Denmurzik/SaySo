@@ -102,6 +102,7 @@ public class NoDashCatalogueTests
         TrayTooltip.ForError("Gemini: нет связи с сервером; Groq: ключ API недействителен"),
     ], atLeast: 5);
 
+#if WINDOWS
     [Fact]
     public void AdminTaskDescription_HasNoDashes()
     {
@@ -110,4 +111,5 @@ public class NoDashCatalogueTests
         Assert.DoesNotContain('—', xml);
         Assert.DoesNotContain('–', xml);
     }
+#endif
 }

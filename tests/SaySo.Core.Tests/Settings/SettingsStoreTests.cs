@@ -46,7 +46,7 @@ public class SettingsStoreTests
         using var dir = new TempDir();
         var s = new SettingsStore(new AppPaths(dir.Path)).Load();
 
-        Assert.Equal(new[] { 0xA3 }, s.Hotkey.Keys);
+        Assert.Equal(HotkeySettings.DefaultKeys(), s.Hotkey.Keys);
         Assert.Equal(300, s.Hotkey.TapThresholdMs);
         Assert.Equal("gemini-3.5-transcribe-live", s.Recognition.GeminiModel);
         Assert.Equal(TranscriptionMode.Smart, s.Recognition.Mode);
@@ -122,7 +122,7 @@ public class SettingsStoreTests
 
         var s = new SettingsStore(paths).Load();
 
-        Assert.Equal(new[] { 0xA3 }, s.Hotkey.Keys);
+        Assert.Equal(HotkeySettings.DefaultKeys(), s.Hotkey.Keys);
         Assert.Equal("gemini-3.5-transcribe-live", s.Recognition.GeminiModel);
         Assert.Empty(s.Vocabulary);
     }
@@ -139,11 +139,15 @@ public class SettingsStoreTests
     }
 
     [Fact]
-    public void Normalize_EmptyHotkey_FallsBackToRightCtrl()
+    public void DefaultHotkey_IsRightCtrl_OnMacRightCmd() =>
+        Assert.Equal(OperatingSystem.IsMacOS() ? new[] { 0x5C } : new[] { 0xA3 }, HotkeySettings.DefaultKeys());
+
+    [Fact]
+    public void Normalize_EmptyHotkey_FallsBackToDefault()
     {
         var s = new AppSettings();
         s.Hotkey.Keys = [];
-        Assert.Equal(new[] { 0xA3 }, SettingsNormalizer.Normalize(s).Hotkey.Keys);
+        Assert.Equal(HotkeySettings.DefaultKeys(), SettingsNormalizer.Normalize(s).Hotkey.Keys);
     }
 
     [Fact]
@@ -213,7 +217,7 @@ public class SettingsStoreTests
         using (new HeldFile(paths.SettingsFile))
         {
             Assert.False(store.TryLoad(out var fallback));
-            Assert.Equal(new[] { 0xA3 }, fallback.Hotkey.Keys); // умолчания: применять их нельзя
+            Assert.Equal(HotkeySettings.DefaultKeys(), fallback.Hotkey.Keys); // умолчания: применять их нельзя
         }
 
         Assert.True(store.TryLoad(out var loaded));

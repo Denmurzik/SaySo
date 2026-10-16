@@ -1,10 +1,11 @@
 using System.Security.Cryptography;
 using System.Text.Json;
+using SaySo.Core.Diagnostics;
 using SaySo.Core.Json;
 
 namespace SaySo.Core.Storage;
 
-/// <summary>Ключи API (secrets.bin, зашифровано DPAPI).</summary>
+/// <summary>Ключи API (secrets.bin, зашифровано DPAPI на Windows, ключом из Связки ключей на macOS).</summary>
 public sealed class Secrets
 {
     /// <summary>Ключи Gemini в порядке приоритета; при исчерпании квоты SaySo переключается на следующий.</summary>
@@ -36,7 +37,7 @@ public sealed class SecretStore(AppPaths paths)
 
         try
         {
-            var plain = Dpapi.Unprotect(cipher);
+            var plain = DataProtection.Unprotect(cipher);
             try
             {
                 return (JsonSerializer.Deserialize(plain, SaySoJsonContext.Default.Secrets) ?? new Secrets()).Clean();
@@ -45,6 +46,12 @@ public sealed class SecretStore(AppPaths paths)
             {
                 CryptographicOperations.ZeroMemory(plain);
             }
+        }
+        catch (DataProtectionUnavailableException e)
+        {
+            // Связка ключей не отдала ключ (отказ в доступе): файл цел, в карантин не переносим.
+            Log.Error("SecretStore", e);
+            return new Secrets();
         }
         catch (Exception e) when (e is CryptographicException or JsonException)
         {
@@ -59,7 +66,7 @@ public sealed class SecretStore(AppPaths paths)
         var json = JsonSerializer.SerializeToUtf8Bytes(secrets.Clean(), SaySoJsonContext.Default.Secrets);
         try
         {
-            AtomicFile.WriteAllBytes(paths.SecretsFile, Dpapi.Protect(json));
+            AtomicFile.WriteAllBytes(paths.SecretsFile, DataProtection.Protect(json));
         }
         finally
         {
