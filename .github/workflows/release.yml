@@ -11,7 +11,30 @@ on:
 permissions:
   contents: write
 jobs:
+  macos:
+    runs-on: macos-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+      - name: Модульные тесты (macOS)
+        run: dotnet test --project tests/SaySo.Core.Tests -c Release --filter-not-trait "Category=Integration"
+      - name: Сборка SaySo.app (arm64 + x86-64) и ZIP
+        run: ./build-macos.sh
+      - name: Файлы macOS как артефакт запуска
+        uses: actions/upload-artifact@v6
+        with:
+          name: SaySo-macos
+          path: |
+            artifacts/release/SaySo-*-macos.zip
+            artifacts/release/SaySo-*-macos.zip.sha256
+          if-no-files-found: error
   release:
+    needs: macos
     runs-on: windows-latest
     timeout-minutes: 60
     steps:
@@ -44,6 +67,11 @@ jobs:
       - name: Сборка установщика и ZIP
         shell: pwsh
         run: ./build-installer.ps1 -PortableIscc
+      - name: Файлы macOS из соседнего задания
+        uses: actions/download-artifact@v6
+        with:
+          name: SaySo-macos
+          path: artifacts/release
       - name: Файлы выпуска как артефакт запуска
         uses: actions/upload-artifact@v6
         with:
@@ -52,6 +80,8 @@ jobs:
             artifacts/installer/SaySo-Setup-${{ env.VERSION }}.exe
             artifacts/installer/SaySo-Setup-${{ env.VERSION }}.exe.sha256
             artifacts/release/SaySo-${{ env.VERSION }}-win-x64.zip
+            artifacts/release/SaySo-${{ env.VERSION }}-macos.zip
+            artifacts/release/SaySo-${{ env.VERSION }}-macos.zip.sha256
             artifacts/release-notes.md
           if-no-files-found: error
       - name: Опубликовать GitHub Release
@@ -64,7 +94,9 @@ jobs:
           $files = @(
             "artifacts/installer/SaySo-Setup-${env:VERSION}.exe",
             "artifacts/installer/SaySo-Setup-${env:VERSION}.exe.sha256",
-            "artifacts/release/SaySo-${env:VERSION}-win-x64.zip"
+            "artifacts/release/SaySo-${env:VERSION}-win-x64.zip",
+            "artifacts/release/SaySo-${env:VERSION}-macos.zip",
+            "artifacts/release/SaySo-${env:VERSION}-macos.zip.sha256"
           )
           # Повторный запуск (перезапуск упавшего job) не должен падать на уже созданном релизе: обновляем файлы и заметки.
           gh release view $env:TAG --repo $env:GITHUB_REPOSITORY *> $null
