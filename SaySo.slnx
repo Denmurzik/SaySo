@@ -1,6 +1,7 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/SaySo.Core/SaySo.Core.csproj" />
+    <Project Path="src/SaySo.Mac/SaySo.Mac.csproj" />
     <Project Path="src/SaySo/SaySo.csproj">
       <Platform Project="x64" />
     </Project>

@@ -1,3 +1,4 @@
+using System.Runtime.Versioning;
 using System.Security;
 using Microsoft.Win32;
 using SaySo.Core.Diagnostics;
@@ -24,6 +25,7 @@ public enum InstallHive
 public sealed record InstallEntry(string? AppPath);
 
 /// <summary>Чтение ключа удаления Inno Setup этого приложения (<c>AppId</c> из SaySo.iss, суффикс <c>_is1</c>).</summary>
+[SupportedOSPlatform("windows")]
 public static class InstallRegistry
 {
     public const string UninstallKey = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\{4C827BFC-9A72-4512-910C-1DDC1336642F}_is1";

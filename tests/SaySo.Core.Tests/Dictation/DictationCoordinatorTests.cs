@@ -146,7 +146,7 @@ public sealed class DictationCoordinatorTests : IDisposable
         _scheduler.Fire(DictationCoordinator.EngineStartDelay);
 
         Assert.StartsWith("message:Error:", _overlay.Calls.Single());
-        Assert.Contains("Параметры", _overlay.Calls.Single());
+        Assert.Contains(OperatingSystem.IsMacOS() ? "Системные настройки" : "Параметры", _overlay.Calls.Single());
         Assert.Contains("Конфиденциальность", _feedback.TrayDetails[^1]); // полный путь — в подсказке значка
         Assert.Equal([SoundKind.Error], _feedback.Sounds);
         Assert.Equal(TrayState.Error, _feedback.Tray[^1]);
@@ -513,10 +513,11 @@ public sealed class DictationCoordinatorTests : IDisposable
     }
 
     [Theory]
-    [InlineData(InsertOutcome.BlockedByElevation, "Админ-окно")]
+    [InlineData(InsertOutcome.BlockedByElevation, "текст в буфере")] // Windows: «Админ-окно: …», macOS: «Вставка запрещена: …»
     [InlineData(InsertOutcome.ClipboardUnavailable, "Буфер обмена занят")]
     [InlineData(InsertOutcome.NoTarget, "Нет активного окна")]
     [InlineData(InsertOutcome.InputBlocked, "Не вставилось")]
+    [InlineData(InsertOutcome.AccessibilityDenied, "Универсального доступа")]
     public async Task InsertProblems_AreExplained_TextStaysInHistory(InsertOutcome outcome, string fragment)
     {
         _output.Outcome = outcome;

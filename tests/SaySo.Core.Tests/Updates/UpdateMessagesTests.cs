@@ -53,8 +53,9 @@ public class UpdateMessagesTests
     {
         var version = new Version(0, 2, 0);
 
-        Assert.Equal("Доступна версия 0.2.0. Скачайте установщик со страницы релиза", UpdateMessages.Balloon(version, manual: true));
-        Assert.Equal("Доступна версия 0.2.0. Скачайте установщик со страницы релиза", UpdateMessages.Available(version, manual: true));
+        var download = OperatingSystem.IsMacOS() ? "новую версию" : "установщик";
+        Assert.Equal($"Доступна версия 0.2.0. Скачайте {download} со страницы релиза", UpdateMessages.Balloon(version, manual: true));
+        Assert.Equal($"Доступна версия 0.2.0. Скачайте {download} со страницы релиза", UpdateMessages.Available(version, manual: true));
         Assert.Equal("Страница релиза 0.2.0", UpdateMessages.MenuItem(version, manual: true));
         Assert.True(UpdateMessages.Balloon(new Version(999, 999, 999), manual: true).Length < 256);
     }

@@ -8,3 +8,4 @@
 *.ico binary
 *.gif binary
 *.wav binary
+*.sh text eol=lf

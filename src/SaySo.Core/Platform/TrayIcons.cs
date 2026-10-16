@@ -3,14 +3,6 @@ using SaySo.Core.Interop;
 
 namespace SaySo.Core.Platform;
 
-public enum TrayState
-{
-    Idle,
-    Recording,
-    Paused,
-    Error,
-}
-
 /// <summary>
 /// Набор значков трея под текущую тему панели задач (светлая/тёмная) и DPI системы.
 /// Значок, который не удалось создать, равен 0 — <see cref="TrayIcon"/> с таким значком всё равно работает.

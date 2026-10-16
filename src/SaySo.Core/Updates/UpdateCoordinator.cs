@@ -48,12 +48,26 @@ public sealed record UpdateEnvironment(
     Func<InstallHive, InstallEntry?> ReadInstallEntry,
     bool Elevated)
 {
-    public static UpdateEnvironment Current() => new(
-        Environment.ProcessPath ?? Path.Combine(AppContext.BaseDirectory, "SaySo.exe"),
-        UpdateInstallPlan.SystemProgramFilesRoots(),
-        Path.Combine(Path.GetTempPath(), "SaySo-Update"),
-        InstallRegistry.Read,
-        ProcessIntegrity.IsElevated);
+    /// <summary>
+    /// Окружение этого процесса. На macOS установщика нет: ключей удаления не бывает, поэтому план всегда «открыть страницу
+    /// релиза» (новую версию пользователь скачивает и переносит в «Программы» сам).
+    /// </summary>
+    public static UpdateEnvironment Current() =>
+#if WINDOWS
+        new(
+            Environment.ProcessPath ?? Path.Combine(AppContext.BaseDirectory, "SaySo.exe"),
+            UpdateInstallPlan.SystemProgramFilesRoots(),
+            Path.Combine(Path.GetTempPath(), "SaySo-Update"),
+            InstallRegistry.Read,
+            ProcessIntegrity.IsElevated);
+#else
+        new(
+            Environment.ProcessPath ?? Path.Combine(AppContext.BaseDirectory, "SaySo"),
+            [],
+            Path.Combine(Path.GetTempPath(), "SaySo-Update"),
+            static _ => null,
+            false);
+#endif
 
     public UpdateInstallPlan PlanFor(bool releaseInstallable) =>
         UpdateInstallPlan.Decide(ExePath, ProgramFilesRoots, ReadInstallEntry, releaseInstallable, Elevated);

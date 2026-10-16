@@ -44,7 +44,7 @@ public class HistoryStoreTests
         Assert.DoesNotContain("SECRETMARK-1", Encoding.UTF8.GetString(raw));
         Assert.DoesNotContain("SECRETMARK-1", Encoding.Unicode.GetString(raw));
         // Контроль: после расшифровки маркер на месте, значит проверка выше действительно что-то проверяет.
-        Assert.Contains("SECRETMARK-1", Encoding.UTF8.GetString(Dpapi.Unprotect(raw)));
+        Assert.Contains("SECRETMARK-1", Encoding.UTF8.GetString(DataProtection.Unprotect(raw)));
     }
 
     [Fact]

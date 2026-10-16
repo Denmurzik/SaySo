@@ -83,6 +83,7 @@ public class UpdateStateTests
         Assert.Equal(Now, state.LastCheckUtc);
     }
 
+    // Блокировка файла от замены есть только в Windows: на macOS переименование поверх открытого файла разрешено.
     [Fact]
     public void Save_FileLocked_ReturnsFalseInsteadOfThrowing()
     {
@@ -91,6 +92,7 @@ public class UpdateStateTests
         var store = new UpdateStateStore(paths);
         store.Save(new UpdateState());
 
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "Только Windows: блокировка файла от замены");
         using (new HeldFile(paths.UpdateStateFile))
         {
             Assert.False(store.Save(new UpdateState { DismissedVersion = "0.2.0" }));

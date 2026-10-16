@@ -282,6 +282,16 @@ public partial class NoDashSourceScanTests
     }
 
     [Fact]
+    public void MacApp_StringLiterals_HaveNoDashes_OutsideLogCalls()
+    {
+        // SaySo для macOS: окно настроек, меню значка в строке меню, плашка, сообщения демона.
+        var files = SourceFiles(Path.Combine("src", "SaySo.Mac"), "*.cs").ToList();
+
+        Assert.True(files.Count >= 30, $"найдено слишком мало файлов SaySo.Mac: {files.Count}");
+        Assert.Empty(DashLiteralsIn(files));
+    }
+
+    [Fact]
     public void InstallerScript_UserVisibleText_HasNoDashes()
     {
         var path = Path.Combine(Root, "installer", "SaySo.iss");

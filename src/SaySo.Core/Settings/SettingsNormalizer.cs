@@ -19,7 +19,7 @@ public static class SettingsNormalizer
         s.Hotkey.Keys = (s.Hotkey.Keys ?? []).Where(k => k is > 0 and < 255).Distinct().ToList();
         if (s.Hotkey.Keys.Count == 0)
         {
-            s.Hotkey.Keys = [0xA3];
+            s.Hotkey.Keys = HotkeySettings.DefaultKeys();
         }
 
         s.Hotkey.TapThresholdMs = Math.Clamp(s.Hotkey.TapThresholdMs, MinTapThresholdMs, MaxTapThresholdMs);

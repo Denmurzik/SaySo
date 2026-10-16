@@ -14,7 +14,7 @@ public sealed class AppSettings
     /// <summary>Словарь терминов (до 1000).</summary>
     public List<string> Vocabulary { get; set; } = [];
 
-    /// <summary>Идентификатор устройства WASAPI; null — системный микрофон по умолчанию.</summary>
+    /// <summary>Идентификатор устройства (Windows: WASAPI, macOS: UID Core Audio); null — системный микрофон по умолчанию.</summary>
     public string? MicrophoneDeviceId { get; set; }
 
     /// <summary>
@@ -30,7 +30,7 @@ public sealed class AppSettings
 
     public bool AutostartEnabled { get; set; } = true;
 
-    /// <summary>Запуск демона с правами администратора (для вставки в админ-окна).</summary>
+    /// <summary>Запуск демона с правами администратора (для вставки в админ-окна). Только Windows: на macOS не используется.</summary>
     public bool RunAsAdmin { get; set; }
 
     /// <summary>Раз в сутки (по событиям, не по таймеру) спрашивать GitHub о новой версии.</summary>
@@ -39,8 +39,14 @@ public sealed class AppSettings
 
 public sealed class HotkeySettings
 {
-    /// <summary>Коды виртуальных клавиш комбинации (VK_*). По умолчанию — правый Ctrl.</summary>
-    public List<int> Keys { get; set; } = [0xA3];
+    /// <summary>Коды виртуальных клавиш комбинации (VK_*). По умолчанию — правый Ctrl, на macOS правый Cmd.</summary>
+    public List<int> Keys { get; set; } = DefaultKeys();
+
+    /// <summary>
+    /// Комбинация по умолчанию. На клавиатурах Mac (в том числе MacBook) правого Control нет, а правый Cmd почти не
+    /// участвует в сочетаниях и в наборе текста.
+    /// </summary>
+    public static List<int> DefaultKeys() => OperatingSystem.IsMacOS() ? [0x5C] : [0xA3];
 
     /// <summary>Нажатие короче порога включает режим «руки свободны».</summary>
     public int TapThresholdMs { get; set; } = 300;

@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text.Json;
+using SaySo.Core.Diagnostics;
 using SaySo.Core.Json;
 
 namespace SaySo.Core.Storage;
@@ -7,7 +8,7 @@ namespace SaySo.Core.Storage;
 /// <summary>Одна диктовка в истории.</summary>
 public sealed record HistoryEntry(DateTimeOffset At, string Text, string Engine);
 
-/// <summary>Последние диктовки (history.bin, зашифровано DPAPI), новые — первыми.</summary>
+/// <summary>Последние диктовки (history.bin, зашифровано DPAPI на Windows, ключом из Связки ключей на macOS), новые — первыми.</summary>
 public sealed class HistoryStore(AppPaths paths)
 {
     public const int MaxEntries = 20;
@@ -56,7 +57,7 @@ public sealed class HistoryStore(AppPaths paths)
 
         try
         {
-            var plain = Dpapi.Unprotect(cipher);
+            var plain = DataProtection.Unprotect(cipher);
             try
             {
                 return JsonSerializer.Deserialize(plain, SaySoJsonContext.Default.ListHistoryEntry) ?? [];
@@ -65,6 +66,12 @@ public sealed class HistoryStore(AppPaths paths)
             {
                 CryptographicOperations.ZeroMemory(plain);
             }
+        }
+        catch (DataProtectionUnavailableException e)
+        {
+            // Связка ключей не отдала ключ (отказ в доступе): файл цел, в карантин не переносим.
+            Log.Error("HistoryStore", e);
+            return [];
         }
         catch (Exception e) when (e is CryptographicException or JsonException)
         {
@@ -79,7 +86,7 @@ public sealed class HistoryStore(AppPaths paths)
         var json = JsonSerializer.SerializeToUtf8Bytes(list, SaySoJsonContext.Default.ListHistoryEntry);
         try
         {
-            AtomicFile.WriteAllBytes(paths.HistoryFile, Dpapi.Protect(json));
+            AtomicFile.WriteAllBytes(paths.HistoryFile, DataProtection.Protect(json));
         }
         finally
         {

@@ -1,12 +1,13 @@
 <p align="center"><img src="docs/assets/icon.png" width="96" alt="SaySo"></p>
 <h1 align="center">SaySo</h1>
 <p align="center">
-  <b>Hold a key. Speak. Get clean text in any Windows app.</b><br>
-  Native Windows 11 voice dictation — a lightweight, free alternative to Wispr Flow.
+  <b>Hold a key. Speak. Get clean text in any Windows or macOS app.</b><br>
+  Native voice dictation for Windows 11 and macOS — a lightweight, free alternative to Wispr Flow.
 </p>
 <p align="center">
   <a href="https://github.com/Denmurzik/SaySo/actions/workflows/ci.yml"><img src="https://github.com/Denmurzik/SaySo/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <img src="https://img.shields.io/badge/Windows-11-0078D4?logo=windows11&logoColor=white" alt="Windows 11">
+  <img src="https://img.shields.io/badge/macOS-12%2B-000000?logo=apple&logoColor=white" alt="macOS 12+">
   <img src="https://img.shields.io/badge/.NET_10-NativeAOT-512BD4?logo=dotnet&logoColor=white" alt=".NET 10 NativeAOT">
   <img src="https://img.shields.io/badge/WinUI-3-0063B1" alt="WinUI 3">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0--or--later-green" alt="GPL-3.0-or-later"></a>
@@ -121,6 +122,48 @@ Uninstall a copy made by `install.ps1`: `powershell -ExecutionPolicy Bypass -Fil
 
 For development and screenshots, the environment variable `SAYSO_DATA_DIR` (an absolute path; a relative one is ignored) makes SaySo keep its settings, keys, history and log in that folder instead of `%LOCALAPPDATA%\SaySo`, so the real data stays untouched.
 
+## macOS
+
+SaySo also runs on macOS 12 Monterey or later, on Apple Silicon and Intel Macs. It is the same app: the shared core (Gemini Live with key rotation, the Groq fallback, the dictation flow, settings, history, update checks) is the code the Windows version uses, and only the platform layer is native to macOS: a menu bar icon instead of the tray, the hotkey through a Quartz event tap, Core Audio capture, paste through the pasteboard and Cmd+V, and the overlay on Core Animation with a real blur behind it (`NSVisualEffectView`). The interface is in Russian, as on Windows.
+
+### Install on macOS
+
+1. Download `SaySo-X.Y.Z-macos.zip` from the [latest release](https://github.com/Denmurzik/SaySo/releases/latest) (one universal app for Apple Silicon and Intel), unpack it and move `SaySo.app` to *Applications*. To verify the download: `shasum -a 256 SaySo-X.Y.Z-macos.zip` and compare with `SaySo-X.Y.Z-macos.zip.sha256`.
+2. The app is not notarized by Apple (it is signed ad hoc), so the first launch is blocked by Gatekeeper. Right-click `SaySo.app` → *Open* → *Open*, or open it once and then press *Open Anyway* in *System Settings → Privacy & Security*. From the Terminal: `xattr -dr com.apple.quarantine /Applications/SaySo.app`.
+3. SaySo appears as a microphone in the menu bar (there is no Dock icon) and opens its settings window on the first start. Grant two permissions when macOS asks for them (the *General* page shows their state and has buttons that open the right place in *System Settings*):
+   - **Accessibility** («Универсальный доступ»): SaySo needs it to see the hotkey and to paste with Cmd+V. Until it is granted the menu bar menu has an item *Разрешить Универсальный доступ…*; the hotkey starts working within two seconds after you allow it, without a restart.
+   - **Microphone**: asked for on the first start.
+
+| Action | macOS |
+|---|---|
+| Hold **Right ⌘ (Command)** | Recording while held; text is pasted when released |
+| Tap **Right ⌘** | Hands-free mode; tap again to finish |
+| **Esc** while recording | Cancel, nothing is pasted |
+
+MacBook keyboards have no right Control, so on macOS the default hotkey is the right Command key. Any combination can be recorded on the *General* page, including **Fn (🌐)** alone; Caps Lock cannot be a hotkey on macOS, because macOS only reports that its state toggled. The hotkey is not seen while macOS «Secure Input» is on (a password field has focus, or *Secure Keyboard Entry* is enabled in Terminal): this is a macOS protection that no app can bypass.
+
+Where things are on macOS:
+
+- **Settings, history, keys, log:** `~/Library/Application Support/SaySo` (`SAYSO_DATA_DIR` works the same way). API keys and history are encrypted with AES-256-GCM; the key is kept in your login Keychain as the item «SaySo». The Keychain lets only the app that created the item read it, so after you replace `SaySo.app` with a new version macOS may ask once whether SaySo may use it: choose *Always Allow*.
+- **Pasting:** the dictated text is put on the pasteboard marked as transient (`org.nspasteboard.TransientType`), so clipboard managers do not record it, then everything that was on the pasteboard before (text, images, files) is put back. *Paste last* and *Copy last* are in the menu bar menu.
+- **Open at login:** *General → Открывать при входе в систему* writes `~/Library/LaunchAgents/io.github.denmurzik.sayso.plist`, which starts the app through `open -g -a`.
+- **Overlay:** it is shown over full-screen apps and on every Space, does not take focus and lets clicks through. With *Reduce transparency* it has a solid background; with *Reduce motion* it fades in and out.
+- **Updates:** checked the same way and on the same events as on Windows (start, wake, unlock), but there is no installer: a found version is announced once on the overlay, and *Страница релиза X.Y.Z* in the menu opens the release page to download the new zip.
+- **Admin mode** is Windows-only; macOS needs no elevation to paste.
+
+**Uninstall:** *Выйти из SaySo* in the menu bar menu, delete `SaySo.app`, `~/Library/LaunchAgents/io.github.denmurzik.sayso.plist` and, if you want to remove settings, keys and history, `~/Library/Application Support/SaySo` and the Keychain item «SaySo» (*Keychain Access* app).
+
+**Build from source on a Mac:** the .NET SDK from `global.json` and the Xcode Command Line Tools (`xcode-select --install`; Xcode itself is not needed).
+
+```bash
+./build-macos.sh                 # NativeAOT for arm64 and x86-64 → artifacts/macos/SaySo.app and artifacts/release/SaySo-X.Y.Z-macos.zip
+./build-macos.sh --arch arm64    # Apple Silicon only, faster
+open artifacts/macos/SaySo.app
+dotnet test --project tests/SaySo.Core.Tests --filter-not-trait "Category=Integration"   # on macOS: the shared core and the macOS branches
+```
+
+The macOS diagnostics are the same as on Windows: `SaySo.app/Contents/MacOS/SaySo --check-updates`, `--overlay-demo --out result.txt` (writes the physical footprint of the process instead of private bytes) and `--simulate file.wav [--insert]`.
+
 ## API keys
 
 - **Gemini** — create a key in [Google AI Studio](https://aistudio.google.com/apikey). Your own free-tier limits are shown in AI Studio (Google does not publish fixed numbers for this preview model). On the free tier Google may use requests to improve its products. The Gemini API is not available in some regions (including Russia) — a system-wide VPN is required there.
@@ -182,7 +225,7 @@ Architecture, decisions and the protocol notes: [`docs/superpowers/specs`](docs/
 
 ## Roadmap
 
-Command mode (edit selected text by voice), per-app styles, snippets, local models, MSIX package, ARM64.
+Command mode (edit selected text by voice), per-app styles, snippets, local models, MSIX package, ARM64 for Windows, notarized macOS builds.
 
 ## License
 

@@ -108,6 +108,7 @@ public sealed class UpdateDownloaderTests : IDisposable
     [Fact]
     public async Task ValidFile_IsStagedAndGuarded()
     {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "Только Windows: защита скачанного Setup от подмены блокировкой файла");
         Serve();
 
         var result = await Download();
