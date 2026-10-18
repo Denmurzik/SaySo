@@ -1,17 +1,38 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <!-- Проекция Windows SDK (Windows.UI.Composition для плашки) — та же, что у SaySo.exe. -->
-    <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
-    <TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>
-    <WindowsSdkPackageVersion>10.0.26100.57</WindowsSdkPackageVersion>
+    <!--
+      Две цели: Windows (проекция Windows SDK для плашки, P/Invoke через CsWin32) и переносимая net10.0 для macOS.
+      В переносимую не входит Windows-код (Interop, WASAPI, окна, трей, хук, буфер обмена), см. ItemGroup ниже.
+    -->
+    <TargetFrameworks>net10.0-windows10.0.26100.0;net10.0</TargetFrameworks>
     <IsAotCompatible>true</IsAotCompatible>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <DisableRuntimeMarshalling>true</DisableRuntimeMarshalling>
-    <CsWin32PlatformTarget>x64</CsWin32PlatformTarget>
     <RootNamespace>SaySo.Core</RootNamespace>
+    <!-- Восстановление Windows-цели на macOS: там собирается переносимая net10.0 для SaySo.Mac. -->
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
   </PropertyGroup>
-  <ItemGroup>
+  <PropertyGroup Condition="'$(TargetPlatformIdentifier)' == 'windows'">
+    <TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>
+    <WindowsSdkPackageVersion>10.0.26100.57</WindowsSdkPackageVersion>
+    <CsWin32PlatformTarget>x64</CsWin32PlatformTarget>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(TargetPlatformIdentifier)' == 'windows'">
     <PackageReference Include="Microsoft.Windows.CsWin32" Version="0.3.360" PrivateAssets="all" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(TargetPlatformIdentifier)' != 'windows'">
+    <!-- Только Windows: Win32/COM/WinRT. На macOS эти роли выполняет SaySo.Mac. -->
+    <Compile Remove="Interop/**" />
+    <Compile Remove="Audio/Wasapi/ComCalls.cs;Audio/Wasapi/ComThread.cs;Audio/Wasapi/WasapiCapture.cs;Audio/Wasapi/WasapiDevices.cs" />
+    <Compile Remove="Input/ClipboardOwner.cs;Input/ClipboardText.cs;Input/KeyboardInjector.cs;Input/ProcessIntegrity.cs;Input/TextInserter.cs" />
+    <Compile Remove="Overlay/GdiTextMask.cs" />
+    <Compile Remove="Platform/AdminTask.cs;Platform/AutostartManager.cs;Platform/GeometrySource.cs;Platform/GlyphIcon.cs;Platform/GlyphText.cs" />
+    <Compile Remove="Platform/HotkeyListener.cs;Platform/Ipc.cs;Platform/LowLevelKeyboardHook.cs;Platform/MemoryTrimmer.cs;Platform/MessageLoop.cs" />
+    <Compile Remove="Platform/NativeWindow.cs;Platform/OverlayScene.cs;Platform/OverlayWindow.cs;Platform/ShellPaths.cs;Platform/SoundPlayer.cs" />
+    <Compile Remove="Platform/TrayIcon.cs;Platform/TrayIcons.cs;Platform/TrayMenu.cs;Platform/Win32SynchronizationContext.cs" />
+    <Compile Remove="Storage/Dpapi.cs" />
+    <None Remove="NativeMethods.json;NativeMethods.txt" />
+    <AdditionalFiles Remove="NativeMethods.json;NativeMethods.txt" />
   </ItemGroup>
   <ItemGroup>
     <!-- Звуковые темы: ресурсы с постоянными именами SaySo.Sounds.<тема>.<вид>.wav (читаются только выбранной темой). -->

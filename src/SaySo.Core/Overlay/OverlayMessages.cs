@@ -52,6 +52,9 @@ public static class OverlayMessages
 
     public static FailureText Microphone(MicrophoneErrorKind kind, int nativeError) => kind switch
     {
+        MicrophoneErrorKind.AccessDenied when OperatingSystem.IsMacOS() => new FailureText(
+            "Нет доступа к микрофону, см. Системные настройки",
+            "Нет доступа к микрофону: Системные настройки → Конфиденциальность и безопасность → Микрофон → включите SaySo"),
         MicrophoneErrorKind.AccessDenied => new FailureText(
             "Нет доступа к микрофону, см. Параметры",
             "Нет доступа к микрофону: Параметры → Конфиденциальность и защита → Микрофон → разрешите доступ классическим приложениям"),
@@ -61,15 +64,21 @@ public static class OverlayMessages
         _ => FailureText.Same($"Ошибка микрофона (0x{nativeError:X8})"),
     };
 
-    /// <summary>null — вставка удалась, сообщать нечего.</summary>
+    /// <summary>null — вставка удалась, сообщать нечего. На macOS вместо Ctrl+V — Cmd+V (админ-окон там нет).</summary>
     public static string? ForInsertOutcome(InsertOutcome outcome) => outcome switch
     {
+        InsertOutcome.BlockedByElevation when OperatingSystem.IsMacOS() => "Вставка запрещена: текст в буфере, нажмите Cmd+V",
         InsertOutcome.BlockedByElevation => "Админ-окно: текст в буфере, вставьте Ctrl+V",
         InsertOutcome.ClipboardUnavailable => "Буфер обмена занят, текст в истории",
         InsertOutcome.NoTarget => "Нет активного окна, текст в истории",
+        InsertOutcome.InputBlocked when OperatingSystem.IsMacOS() => "Не вставилось: текст в буфере, нажмите Cmd+V",
         InsertOutcome.InputBlocked => "Не вставилось: текст в буфере, нажмите Ctrl+V",
+        InsertOutcome.AccessibilityDenied => AccessibilityDenied,
         _ => null,
     };
+
+    /// <summary>macOS: без «Универсального доступа» нажатие Cmd+V не дойдёт до окна, поэтому текст оставлен в буфере.</summary>
+    public const string AccessibilityDenied = "Нет Универсального доступа, текст в буфере";
 
     /// <summary>
     /// То же для пункта меню трея «Вставить последнее»: текст берётся из истории, поэтому «окна нет» означает, что фокус

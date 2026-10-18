@@ -211,7 +211,7 @@ public class MicrophoneSelectorTests
 
     [Fact]
     public void NameToRemember_PlaceholderConstantMatchesWhatDeviceListReturns() =>
-        Assert.Null(MicrophoneSelector.NameToRemember(WasapiDevices.UnknownDeviceName));
+        Assert.Null(MicrophoneSelector.NameToRemember(MicrophoneSelector.UnknownDeviceName));
 
     [Theory]
     [InlineData("Микрофон (Realtek(R) Audio)")]

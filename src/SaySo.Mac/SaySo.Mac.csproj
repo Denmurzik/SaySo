@@ -1,0 +1,39 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <!--
+      SaySo для macOS: тот же переносимый SaySo.Core (движки, конвейер, координатор, настройки, обновления) и свой
+      платформенный слой на AppKit, Core Audio, CGEventTap и Связке ключей через Objective-C runtime (без Xcode и без
+      привязок net-macos: NativeAOT собирается одними Command Line Tools). Пакет SaySo.app собирает build-macos.sh.
+    -->
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <RuntimeIdentifiers>osx-arm64;osx-x64</RuntimeIdentifiers>
+    <RootNamespace>SaySo.Mac</RootNamespace>
+    <AssemblyName>SaySo</AssemblyName>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <DisableRuntimeMarshalling>true</DisableRuntimeMarshalling>
+
+    <PublishAot>true</PublishAot>
+    <SelfContained>true</SelfContained>
+    <InvariantGlobalization>true</InvariantGlobalization>
+
+    <!-- Минимум памяти: рабочая станция без фонового GC (как у SaySo.exe). -->
+    <ServerGarbageCollection>false</ServerGarbageCollection>
+    <ConcurrentGarbageCollection>false</ConcurrentGarbageCollection>
+
+    <OptimizationPreference>Size</OptimizationPreference>
+    <IlcGenerateStackTraceData>false</IlcGenerateStackTraceData>
+    <UseSystemResourceKeys>true</UseSystemResourceKeys>
+    <DebugType>none</DebugType>
+    <!-- Символы отладки (dSYM) в пакет не нужны. -->
+    <StripSymbols>true</StripSymbols>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../SaySo.Core/SaySo.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="Info.plist" />
+  </ItemGroup>
+</Project>

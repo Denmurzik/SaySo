@@ -8,12 +8,10 @@ using Windows.Win32.UI.Shell.PropertiesSystem;
 
 namespace SaySo.Core.Audio.Wasapi;
 
-public sealed record AudioDevice(string Id, string Name);
-
 public static unsafe class WasapiDevices
 {
     /// <summary>Имя устройства, когда драйвер не отдал настоящее. В настройки не записывается (см. <c>MicrophoneSelector.NameToRemember</c>).</summary>
-    public const string UnknownDeviceName = "Микрофон";
+    public const string UnknownDeviceName = MicrophoneSelector.UnknownDeviceName;
 
     internal static readonly Guid MMDeviceEnumeratorClsid = new("BCDE0395-E52F-467C-8E3D-C4579291692E");
 

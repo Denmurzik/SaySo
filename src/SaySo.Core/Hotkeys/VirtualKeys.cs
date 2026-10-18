@@ -16,6 +16,12 @@ public static class VirtualKeys
     /// <summary>Неназначенная клавиша: её нажатие между Win/Alt down и up не даёт открыться «Пуску»/меню.</summary>
     public const int MenuMaskKey = 0xE8;
 
+    /// <summary>
+    /// macOS: клавиша Fn (🌐). В Windows своего VK у неё нет; взят зарезервированный код, который клавиатура Windows не
+    /// присылает (settings.json у каждой системы свой).
+    /// </summary>
+    public const int MacFunction = 0x8F;
+
     public static bool IsShift(int vk) => vk is LShift or RShift or 0x10;
 
     public static bool IsModifier(int vk) =>

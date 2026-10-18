@@ -6,7 +6,26 @@ public static class HotkeyFormatter
     public static string Format(IEnumerable<int> keys) =>
         string.Join(" + ", keys.OrderBy(Order).ThenBy(vk => vk).Select(Name));
 
-    public static string Name(int vk) => vk switch
+    public static string Name(int vk) => OperatingSystem.IsMacOS() ? MacName(vk) : WindowsName(vk);
+
+    /// <summary>Имена клавиш macOS: Cmd вместо Win, Option вместо Alt, Control вместо Ctrl.</summary>
+    public static string MacName(int vk) => vk switch
+    {
+        0xA2 => "Левый Control",
+        0xA3 => "Правый Control",
+        0x11 => "Control",
+        0xA4 => "Левый Option",
+        0xA5 => "Правый Option",
+        0x12 => "Option",
+        0x5B => "Левый Cmd",
+        0x5C => "Правый Cmd",
+        VirtualKeys.MacFunction => "Fn",
+        0x08 => "Delete",
+        0x2D => "Help",
+        _ => WindowsName(vk),
+    };
+
+    private static string WindowsName(int vk) => vk switch
     {
         0xA2 => "Левый Ctrl",
         0xA3 => "Правый Ctrl",
@@ -39,6 +58,7 @@ public static class HotkeyFormatter
         0xA4 or 0xA5 or 0x12 => 1,
         0xA0 or 0xA1 or 0x10 => 2,
         0x5B or 0x5C => 3,
-        _ => 4,
+        VirtualKeys.MacFunction => 4,
+        _ => 5,
     };
 }

@@ -23,7 +23,7 @@ public class MicrophoneExceptionTests
     {
         var e = MicrophoneException.FromHResult(unchecked((int)0x80070005), "x");
 
-        Assert.Contains("Параметры", e.UserMessage);
+        Assert.Contains(OperatingSystem.IsMacOS() ? "Системные настройки" : "Параметры", e.UserMessage);
         Assert.Contains("Конфиденциальность", e.Detail);
     }
 
