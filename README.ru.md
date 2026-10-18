@@ -110,7 +110,7 @@ SaySo работает и на macOS 12 Monterey и новее, на Mac с Appl
 
 ### Установка на macOS
 
-1. Скачайте `SaySo-X.Y.Z-macos.zip` из [последнего релиза](https://github.com/Denmurzik/SaySo/releases/latest) (одно универсальное приложение для Apple Silicon и Intel), распакуйте и перенесите `SaySo.app` в «Программы». Проверить файл: `shasum -a 256 SaySo-X.Y.Z-macos.zip` и сравнить с `SaySo-X.Y.Z-macos.zip.sha256`.
+1. Скачайте `SaySo-X.Y.Z-macos.dmg` из [последнего релиза](https://github.com/Denmurzik/SaySo/releases/latest) (одно универсальное приложение для Apple Silicon и Intel), откройте его и перетащите `SaySo.app` на «Программы». Рядом лежит и `SaySo-X.Y.Z-macos.zip` с тем же приложением. Проверить файл: `shasum -a 256 SaySo-X.Y.Z-macos.dmg` и сравнить с `SaySo-X.Y.Z-macos.dmg.sha256`.
 2. Приложение не нотаризовано Apple (подпись ad hoc), поэтому первый запуск блокирует Gatekeeper. Щёлкните `SaySo.app` правой кнопкой → «Открыть» → «Открыть» или запустите его один раз и нажмите «Всё равно открыть» в «Системные настройки → Конфиденциальность и безопасность». Из Терминала: `xattr -dr com.apple.quarantine /Applications/SaySo.app`.
 3. SaySo появится микрофоном в строке меню (значка в Dock нет) и при первом запуске откроет окно настроек. Дайте два разрешения, когда macOS их попросит (страница «Общие» показывает их состояние, а кнопки открывают нужный раздел Системных настроек):
    - **Универсальный доступ**: без него SaySo не видит горячую клавишу и не может вставить текст через Cmd+V. Пока его нет, в меню значка есть пункт «Разрешить Универсальный доступ…»; горячая клавиша заработает в течение двух секунд после разрешения, без перезапуска.
@@ -138,7 +138,7 @@ SaySo работает и на macOS 12 Monterey и новее, на Mac с Appl
 **Сборка из исходников на Mac:** .NET SDK из `global.json` и Xcode Command Line Tools (`xcode-select --install`; сам Xcode не нужен).
 
 ```bash
-./build-macos.sh                 # NativeAOT для arm64 и x86-64 → artifacts/macos/SaySo.app и artifacts/release/SaySo-X.Y.Z-macos.zip
+./build-macos.sh                 # NativeAOT для arm64 и x86-64 → artifacts/macos/SaySo.app и artifacts/release/SaySo-X.Y.Z-macos.zip и .dmg
 ./build-macos.sh --arch arm64    # только Apple Silicon, быстрее
 open artifacts/macos/SaySo.app
 dotnet test --project tests/SaySo.Core.Tests --filter-not-trait "Category=Integration"   # на macOS: общее ядро и macOS-ветви

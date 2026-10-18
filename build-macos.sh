@@ -2,7 +2,7 @@
 # Сборка SaySo для macOS: NativeAOT под arm64 и x86-64, универсальный исполняемый файл (lipo), пакет SaySo.app с иконкой,
 # подпись ad-hoc и ZIP для релиза с файлом .sha256. Нужны .NET SDK из global.json и Xcode Command Line Tools
 # (clang, ld, lipo, codesign); сам Xcode не нужен.
-#   ./build-macos.sh                 → artifacts/macos/SaySo.app и artifacts/release/SaySo-X.Y.Z-macos.zip(.sha256)
+#   ./build-macos.sh                 → artifacts/macos/SaySo.app, artifacts/release/SaySo-X.Y.Z-macos.zip(.sha256) и .dmg(.sha256)
 #   ./build-macos.sh --arch arm64    → только Apple Silicon (быстрее, для разработки)
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -68,5 +68,16 @@ ditto -c -k --sequesterRsrc --keepParent "$app" "$zip"
 # Формат sha256sum, как у файлов Windows-релиза: хэш в нижнем регистре, два пробела, имя файла.
 (cd "$release" && shasum -a 256 "SaySo-$version-macos.zip" > "SaySo-$version-macos.zip.sha256")
 
+# Образ диска для установки перетаскиванием: SaySo.app и ссылка на «Программы».
+dmg="$release/SaySo-$version-macos.dmg"
+stage=$(mktemp -d)
+trap 'rm -rf "$stage"' EXIT
+ditto "$app" "$stage/SaySo.app"
+ln -s /Applications "$stage/Applications"
+rm -f "$dmg"
+hdiutil create -volname "SaySo $version" -srcfolder "$stage" -fs HFS+ -format UDZO -imagekey zlib-level=9 -ov "$dmg"
+hdiutil verify "$dmg"
+(cd "$release" && shasum -a 256 "SaySo-$version-macos.dmg" > "SaySo-$version-macos.dmg.sha256")
+
 size=$(du -sh "$app" | cut -f1)
-echo "Готово: $app ($size, $(lipo -archs "$app/Contents/MacOS/SaySo")), $zip"
+echo "Готово: $app ($size, $(lipo -archs "$app/Contents/MacOS/SaySo")), $zip, $dmg"

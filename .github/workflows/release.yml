@@ -32,6 +32,8 @@ jobs:
           path: |
             artifacts/release/SaySo-*-macos.zip
             artifacts/release/SaySo-*-macos.zip.sha256
+            artifacts/release/SaySo-*-macos.dmg
+            artifacts/release/SaySo-*-macos.dmg.sha256
           if-no-files-found: error
   release:
     needs: macos
@@ -82,6 +84,8 @@ jobs:
             artifacts/release/SaySo-${{ env.VERSION }}-win-x64.zip
             artifacts/release/SaySo-${{ env.VERSION }}-macos.zip
             artifacts/release/SaySo-${{ env.VERSION }}-macos.zip.sha256
+            artifacts/release/SaySo-${{ env.VERSION }}-macos.dmg
+            artifacts/release/SaySo-${{ env.VERSION }}-macos.dmg.sha256
             artifacts/release-notes.md
           if-no-files-found: error
       - name: Опубликовать GitHub Release
@@ -96,7 +100,9 @@ jobs:
             "artifacts/installer/SaySo-Setup-${env:VERSION}.exe.sha256",
             "artifacts/release/SaySo-${env:VERSION}-win-x64.zip",
             "artifacts/release/SaySo-${env:VERSION}-macos.zip",
-            "artifacts/release/SaySo-${env:VERSION}-macos.zip.sha256"
+            "artifacts/release/SaySo-${env:VERSION}-macos.zip.sha256",
+            "artifacts/release/SaySo-${env:VERSION}-macos.dmg",
+            "artifacts/release/SaySo-${env:VERSION}-macos.dmg.sha256"
           )
           # Повторный запуск (перезапуск упавшего job) не должен падать на уже созданном релизе: обновляем файлы и заметки.
           gh release view $env:TAG --repo $env:GITHUB_REPOSITORY *> $null

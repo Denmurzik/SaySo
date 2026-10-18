@@ -128,7 +128,7 @@ SaySo also runs on macOS 12 Monterey or later, on Apple Silicon and Intel Macs. 
 
 ### Install on macOS
 
-1. Download `SaySo-X.Y.Z-macos.zip` from the [latest release](https://github.com/Denmurzik/SaySo/releases/latest) (one universal app for Apple Silicon and Intel), unpack it and move `SaySo.app` to *Applications*. To verify the download: `shasum -a 256 SaySo-X.Y.Z-macos.zip` and compare with `SaySo-X.Y.Z-macos.zip.sha256`.
+1. Download `SaySo-X.Y.Z-macos.dmg` from the [latest release](https://github.com/Denmurzik/SaySo/releases/latest) (one universal app for Apple Silicon and Intel), open it and drag `SaySo.app` onto *Applications*. A `SaySo-X.Y.Z-macos.zip` with the same app is attached too. To verify the download: `shasum -a 256 SaySo-X.Y.Z-macos.dmg` and compare with `SaySo-X.Y.Z-macos.dmg.sha256`.
 2. The app is not notarized by Apple (it is signed ad hoc), so the first launch is blocked by Gatekeeper. Right-click `SaySo.app` → *Open* → *Open*, or open it once and then press *Open Anyway* in *System Settings → Privacy & Security*. From the Terminal: `xattr -dr com.apple.quarantine /Applications/SaySo.app`.
 3. SaySo appears as a microphone in the menu bar (there is no Dock icon) and opens its settings window on the first start. Grant two permissions when macOS asks for them (the *General* page shows their state and has buttons that open the right place in *System Settings*):
    - **Accessibility** («Универсальный доступ»): SaySo needs it to see the hotkey and to paste with Cmd+V. Until it is granted the menu bar menu has an item *Разрешить Универсальный доступ…*; the hotkey starts working within two seconds after you allow it, without a restart.
@@ -156,7 +156,7 @@ Where things are on macOS:
 **Build from source on a Mac:** the .NET SDK from `global.json` and the Xcode Command Line Tools (`xcode-select --install`; Xcode itself is not needed).
 
 ```bash
-./build-macos.sh                 # NativeAOT for arm64 and x86-64 → artifacts/macos/SaySo.app and artifacts/release/SaySo-X.Y.Z-macos.zip
+./build-macos.sh                 # NativeAOT for arm64 and x86-64 → artifacts/macos/SaySo.app and artifacts/release/SaySo-X.Y.Z-macos.zip and .dmg
 ./build-macos.sh --arch arm64    # Apple Silicon only, faster
 open artifacts/macos/SaySo.app
 dotnet test --project tests/SaySo.Core.Tests --filter-not-trait "Category=Integration"   # on macOS: the shared core and the macOS branches
