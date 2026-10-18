@@ -14,6 +14,8 @@ jobs:
   macos:
     runs-on: macos-latest
     timeout-minutes: 60
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v5
         with:
