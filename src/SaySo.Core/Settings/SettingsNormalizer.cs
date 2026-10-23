@@ -24,6 +24,7 @@ public static class SettingsNormalizer
 
         s.Hotkey.TapThresholdMs = Math.Clamp(s.Hotkey.TapThresholdMs, MinTapThresholdMs, MaxTapThresholdMs);
         s.SoundTheme = SoundThemes.Normalize(s.SoundTheme);
+        s.OverlayTransparency = Math.Clamp(s.OverlayTransparency, 0, 100);
 
         var r = s.Recognition;
         r.GeminiModel = OrDefault(r.GeminiModel, RecognitionSettings.DefaultGeminiModel);

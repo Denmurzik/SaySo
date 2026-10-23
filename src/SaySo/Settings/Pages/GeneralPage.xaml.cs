@@ -30,6 +30,8 @@ public sealed partial class GeneralPage : UserControl
         FillSoundThemes(s.SoundTheme);
         AutostartSwitch.IsOn = s.AutostartEnabled;
         TraySwitch.IsOn = s.ShowTrayIcon;
+        TransparencySlider.Value = s.OverlayTransparency;
+        TransparencyValue.Text = $"{s.OverlayTransparency} %";
         UpdatesSwitch.IsOn = s.CheckForUpdates;
         AdminSwitch.IsOn = s.RunAsAdmin;
         UpdateAutostartAvailability();
@@ -101,6 +103,26 @@ public sealed partial class GeneralPage : UserControl
 
         // Пока ползунок тянут, на диск не пишем: запись и ReloadSettings — через 300 мс после последнего шага.
         _model.Settings.Hotkey.TapThresholdMs = ms;
+        _model.MarkSettingsDirty();
+        _tapSaveTimer.Stop();
+        _tapSaveTimer.Start();
+    }
+
+    private void OnTransparencyChanged(object sender, RangeBaseValueChangedEventArgs e)
+    {
+        var percent = (int)Math.Round(e.NewValue / 5) * 5;
+        if (TransparencyValue is not null)
+        {
+            TransparencyValue.Text = $"{percent} %";
+        }
+
+        if (_loading || percent == _model.Settings.OverlayTransparency)
+        {
+            return;
+        }
+
+        // Как у порога нажатия: запись и ReloadSettings через 300 мс после последнего шага ползунка.
+        _model.Settings.OverlayTransparency = percent;
         _model.MarkSettingsDirty();
         _tapSaveTimer.Stop();
         _tapSaveTimer.Start();

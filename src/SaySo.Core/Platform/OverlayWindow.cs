@@ -41,6 +41,7 @@ internal sealed unsafe class OverlayWindow : NativeWindow, IDictationOverlay
     private long _hideAt;
     private bool _raiseFailureLogged;
     private bool _sceneFailureLogged;
+    private int _transparency = Settings.AppSettings.DefaultOverlayTransparency;
 
     public OverlayWindow(Func<float> level)
     {
@@ -59,6 +60,22 @@ internal sealed unsafe class OverlayWindow : NativeWindow, IDictationOverlay
         // До первого показа: окно разрешает себе HostBackdropBrush (Windows 11). На Windows 10 вернёт ошибку — сплошной фон.
         var on = 1;
         _hostBackdropAccepted = Native.DwmSetWindowAttribute(Handle, Native.DWMWA_USE_HOSTBACKDROPBRUSH, &on, sizeof(int)) >= 0;
+    }
+
+    /// <summary>Прозрачность капсулы из настроек, 0…100 %; меняется и пока плашка видна.</summary>
+    public int Transparency
+    {
+        get => _transparency;
+        set
+        {
+            if (value == _transparency)
+            {
+                return;
+            }
+
+            _transparency = value;
+            ApplyMaterial();
+        }
     }
 
     /// <summary>Плашка скрылась и сцена освобождена — удобный момент вернуть память ОС.</summary>
@@ -249,7 +266,7 @@ internal sealed unsafe class OverlayWindow : NativeWindow, IDictationOverlay
         var layout = CurrentLayout();
         try
         {
-            var scene = new OverlayScene(Handle, layout, ChooseMaterial(), ReducedMotionOverride?.Invoke() ?? ReducedMotion());
+            var scene = new OverlayScene(Handle, layout, ChooseMaterial(), LuminosityAlpha, ReducedMotionOverride?.Invoke() ?? ReducedMotion());
             _sceneFailureLogged = false;
             return scene;
         }
@@ -269,13 +286,15 @@ internal sealed unsafe class OverlayWindow : NativeWindow, IDictationOverlay
     {
         try
         {
-            _scene?.SetMaterial(ChooseMaterial());
+            _scene?.SetMaterial(ChooseMaterial(), LuminosityAlpha);
         }
         catch (Exception e)
         {
             PlatformLog.Error("Плашка: смена материала", e);
         }
     }
+
+    private float LuminosityAlpha => OverlayMotion.AcrylicLuminosityAlpha(_transparency);
 
     private OverlayMaterial ChooseMaterial()
     {

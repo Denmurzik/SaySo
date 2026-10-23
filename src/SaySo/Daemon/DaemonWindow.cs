@@ -1,5 +1,6 @@
 using SaySo.Core.Diagnostics;
 using SaySo.Core.Hotkeys;
+using SaySo.Core.Input;
 using SaySo.Core.Interop;
 using SaySo.Core.Platform;
 
@@ -17,12 +18,16 @@ internal sealed class DaemonWindow : IDisposable
 
     private const uint WM_POWERBROADCAST = 0x0218;
     private const uint PBT_APMRESUMEAUTOMATIC = 0x0012;
+    private const uint PBT_POWERSETTINGCHANGE = 0x8013;
 
     private readonly MessageWindow _window;
     private readonly Dictionary<uint, string> _ipc = [];
     private readonly Dictionary<nuint, (Action Callback, bool Repeat)> _timers = [];
     private readonly uint _taskbarCreated;
     private nuint _nextTimerId = 100;
+    private nint _displayNotification;
+    private uint _displayState = 1; // 0 выключен, 1 включён, 2 затемнён
+    private bool _rawInputSeen;
 
     public DaemonWindow()
     {
@@ -42,6 +47,16 @@ internal sealed class DaemonWindow : IDisposable
         AllowFromLowerIntegrity(Native.WM_SETTINGCHANGE);
         Native.WTSRegisterSessionNotification(_window.Handle, Native.NOTIFY_FOR_THIS_SESSION);
         RegisterKeyboardInput(_window.Handle, remove: false);
+        unsafe
+        {
+            var guid = Native.GUID_CONSOLE_DISPLAY_STATE;
+            _displayNotification = Native.RegisterPowerSettingNotification(_window.Handle, &guid, 0); // DEVICE_NOTIFY_WINDOW_HANDLE
+        }
+
+        if (_displayNotification == 0)
+        {
+            Log.Info($"RegisterPowerSettingNotification: код {System.Runtime.InteropServices.Marshal.GetLastPInvokeError()}");
+        }
     }
 
     public event Action<HotkeyAction>? HotkeyPressed;
@@ -61,8 +76,14 @@ internal sealed class DaemonWindow : IDisposable
     /// <summary>Выход из сна/гибернации (PBT_APMRESUMEAUTOMATIC): хук мог быть снят системой.</summary>
     public event Action? PowerResumed;
 
-    /// <summary>Нажатие или отпускание клавиши в любом окне (Raw Input); аргумент — время события, как GetMessageTime.</summary>
-    public event Action<uint>? KeyboardInput;
+    /// <summary>Нажатие или отпускание клавиши в любом окне (Raw Input): время события (как GetMessageTime), VK, нажата ли.</summary>
+    public event Action<uint, int, bool>? KeyboardInput;
+
+    /// <summary>Экран включился после выключения или затемнения (долгий простой, современный режим ожидания).</summary>
+    public event Action? DisplayOn;
+
+    /// <summary>Время последнего сообщения хука (как GetMessageTime): по нему видно, ответил ли хук на нажатие.</summary>
+    public uint LastHotkeyMessageTime { get; private set; }
 
     /// <summary>
     /// WM_CLOSE (например, <c>taskkill</c> без /F): штатное завершение, как по IPC-сообщению Quit.
@@ -103,6 +124,12 @@ internal sealed class DaemonWindow : IDisposable
 
         Native.WTSUnRegisterSessionNotification(_window.Handle);
         RegisterKeyboardInput(0, remove: true);
+        if (_displayNotification != 0)
+        {
+            Native.UnregisterPowerSettingNotification(_displayNotification);
+            _displayNotification = 0;
+        }
+
         _window.Dispose();
     }
 
@@ -119,6 +146,55 @@ internal sealed class DaemonWindow : IDisposable
         if (!Native.RegisterRawInputDevices(&device, 1, (uint)sizeof(Native.RAWINPUTDEVICE)) && !remove)
         {
             Log.Info($"RegisterRawInputDevices: код {System.Runtime.InteropServices.Marshal.GetLastPInvokeError()}; сторож хука выключен");
+        }
+    }
+
+    private unsafe void OnRawInput(nint handle)
+    {
+        Native.RAWINPUTKEYBOARD data;
+        var size = (uint)sizeof(Native.RAWINPUTKEYBOARD);
+        var read = Native.GetRawInputData(handle, Native.RID_INPUT, &data, &size, (uint)sizeof(Native.RAWINPUTHEADER));
+        if (read == uint.MaxValue || read < (uint)sizeof(Native.RAWINPUTKEYBOARD) || data.header.dwType != Native.RIM_TYPEKEYBOARD)
+        {
+            return;
+        }
+
+        if (!_rawInputSeen)
+        {
+            _rawInputSeen = true;
+            Log.Info("Raw Input: нажатия приходят, сторож хука работает");
+        }
+
+        var k = data.keyboard;
+        if (k.ExtraInformation == (uint)KeyboardInjector.InjectionMarker || k.VKey is 0 or 0xFF)
+        {
+            return; // наш собственный ввод (Ctrl+V при вставке) и служебные коды без клавиши
+        }
+
+        var e0 = (k.Flags & Native.RI_KEY_E0) != 0;
+        int vk = k.VKey switch
+        {
+            0x10 => k.MakeCode == 0x36 ? VirtualKeys.RShift : VirtualKeys.LShift,
+            0x11 => e0 ? VirtualKeys.RControl : VirtualKeys.LControl,
+            0x12 => e0 ? VirtualKeys.RMenu : VirtualKeys.LMenu,
+            _ => k.VKey,
+        };
+        KeyboardInput?.Invoke(unchecked((uint)Native.GetMessageTime()), vk, (k.Flags & Native.RI_KEY_BREAK) == 0);
+    }
+
+    private unsafe void OnPowerSetting(nint lParam)
+    {
+        var setting = (Native.POWERBROADCAST_SETTING*)lParam;
+        if (setting->PowerSetting != Native.GUID_CONSOLE_DISPLAY_STATE || setting->DataLength < sizeof(uint))
+        {
+            return;
+        }
+
+        var previous = _displayState;
+        _displayState = setting->Data;
+        if (_displayState == 1 && previous != 1)
+        {
+            DisplayOn?.Invoke();
         }
     }
 
@@ -144,6 +220,7 @@ internal sealed class DaemonWindow : IDisposable
                 Sync.Drain();
                 return 0;
             case HotkeyMessage:
+                LastHotkeyMessageTime = unchecked((uint)Native.GetMessageTime());
                 HotkeyPressed?.Invoke((HotkeyAction)wParam);
                 return 0;
             case TrayMessage:
@@ -153,7 +230,7 @@ internal sealed class DaemonWindow : IDisposable
                 CloseRequested?.Invoke();
                 return 0;
             case Native.WM_INPUT:
-                KeyboardInput?.Invoke(unchecked((uint)Native.GetMessageTime()));
+                OnRawInput(lParam);
                 return null; // DefWindowProc освобождает данные Raw Input
             case Native.WM_TIMER:
                 if (_timers.TryGetValue(wParam, out var timer))
@@ -178,6 +255,10 @@ internal sealed class DaemonWindow : IDisposable
                 if (wParam == PBT_APMRESUMEAUTOMATIC)
                 {
                     PowerResumed?.Invoke();
+                }
+                else if (wParam == PBT_POWERSETTINGCHANGE && lParam != 0)
+                {
+                    OnPowerSetting(lParam);
                 }
 
                 return 1; // TRUE

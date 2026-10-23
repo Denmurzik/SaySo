@@ -5,6 +5,15 @@ namespace SaySo.Core.Tests.Overlay;
 
 public class OverlayMotionTests
 {
+    [Theory]
+    [InlineData(0, 0.9f)]
+    [InlineData(50, 0.45f)]
+    [InlineData(100, 0f)]
+    [InlineData(-5, 0.9f)]
+    [InlineData(150, 0f)]
+    public void AcrylicLuminosityAlpha_FollowsTransparency(int percent, float expected) =>
+        Assert.Equal(expected, OverlayMotion.AcrylicLuminosityAlpha(percent), 3);
+
     [Fact]
     public void PushLevelFromCenter_NewestInMiddle_OlderSpreadOutwards()
     {

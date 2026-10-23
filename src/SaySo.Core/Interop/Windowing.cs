@@ -87,6 +87,24 @@ internal static unsafe partial class Native
         public nuint dwExtraInfo;
     }
 
+    /// <summary>Состояние экрана консоли: данные PBT_POWERSETTINGCHANGE — 0 выключен, 1 включён, 2 затемнён.</summary>
+    public static readonly Guid GUID_CONSOLE_DISPLAY_STATE = new("6FE69556-704A-47A0-8F24-C28D936FDA47");
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct POWERBROADCAST_SETTING
+    {
+        public Guid PowerSetting;
+        public uint DataLength;
+        public uint Data; // для GUID_CONSOLE_DISPLAY_STATE — DWORD
+    }
+
+    [LibraryImport("user32.dll", SetLastError = true)]
+    public static partial nint RegisterPowerSettingNotification(nint recipient, Guid* powerSetting, uint flags);
+
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool UnregisterPowerSettingNotification(nint handle);
+
     [LibraryImport("user32.dll", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
     public static partial nint CreateWindowExW(uint exStyle, string className, string? windowName, uint style,
         int x, int y, int width, int height, nint parent, nint menu, nint instance, void* param);

@@ -251,6 +251,12 @@ public static class OverlayMotion
     }
 
     /// <summary>
+    /// Плотность тёмного слоя Acrylic по «Прозрачности плашки» из настроек (0…100 %): 0 % — почти сплошной фон
+    /// (α 0,9, как в 0.1.4), 100 % — только размытие и лёгкий тон.
+    /// </summary>
+    public static float AcrylicLuminosityAlpha(int transparencyPercent) => 0.9f * (1f - Math.Clamp(transparencyPercent, 0, 100) / 100f);
+
+    /// <summary>
     /// Новый уровень встаёт в средний столбик, прежние расходятся от центра к краям (симметрично):
     /// волна бежит из середины в обе стороны.
     /// </summary>

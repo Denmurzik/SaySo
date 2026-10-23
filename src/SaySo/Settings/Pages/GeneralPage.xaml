@@ -104,6 +104,24 @@
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
                     <StackPanel VerticalAlignment="Center">
+                        <TextBlock Text="Прозрачность плашки" Style="{StaticResource CardTitle}" />
+                        <TextBlock Style="{StaticResource CardDescription}"
+                                   Text="Насколько просвечивают окна под плашкой. Не действует, если в Windows выключены эффекты прозрачности." />
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                        <Slider x:Name="TransparencySlider" Width="220" Minimum="0" Maximum="100" StepFrequency="5" ValueChanged="OnTransparencyChanged" />
+                        <TextBlock x:Name="TransparencyValue" MinWidth="60" VerticalAlignment="Center" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <Border Style="{StaticResource SettingsCard}">
+                <Grid ColumnSpacing="16">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel VerticalAlignment="Center">
                         <TextBlock Text="Проверять обновления автоматически" Style="{StaticResource CardTitle}" />
                         <TextBlock Style="{StaticResource CardDescription}"
                                    Text="Раз в сутки SaySo спрашивает у GitHub, нет ли новой версии. Ключи и тексты диктовок не отправляются. Проверить вручную можно на странице «О программе»." />

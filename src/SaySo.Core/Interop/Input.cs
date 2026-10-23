@@ -12,6 +12,10 @@ internal static unsafe partial class Native
     public const uint WM_INPUT = 0x00FF;
     public const uint RIDEV_REMOVE = 0x00000001;
     public const uint RIDEV_INPUTSINK = 0x00000100;
+    public const uint RID_INPUT = 0x10000003;
+    public const uint RIM_TYPEKEYBOARD = 1;
+    public const ushort RI_KEY_BREAK = 0x01;
+    public const ushort RI_KEY_E0 = 0x02;
 
     [StructLayout(LayoutKind.Sequential)]
     public struct KEYBDINPUT
@@ -59,6 +63,36 @@ internal static unsafe partial class Native
         public uint dwFlags;
         public nint hwndTarget;
     }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct RAWINPUTHEADER
+    {
+        public uint dwType;
+        public uint dwSize;
+        public nint hDevice;
+        public nuint wParam;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct RAWKEYBOARD
+    {
+        public ushort MakeCode;
+        public ushort Flags;
+        public ushort Reserved;
+        public ushort VKey;
+        public uint Message;
+        public uint ExtraInformation;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct RAWINPUTKEYBOARD
+    {
+        public RAWINPUTHEADER header;
+        public RAWKEYBOARD keyboard;
+    }
+
+    [LibraryImport("user32.dll")]
+    public static partial uint GetRawInputData(nint rawInput, uint command, void* data, uint* size, uint headerSize);
 
     [LibraryImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]

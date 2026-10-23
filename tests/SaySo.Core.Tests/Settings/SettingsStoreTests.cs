@@ -128,6 +128,16 @@ public class SettingsStoreTests
     }
 
     [Theory]
+    [InlineData(-10, 0)]
+    [InlineData(50, 50)]
+    [InlineData(400, 100)]
+    public void Normalize_ClampsOverlayTransparency(int input, int expected)
+    {
+        var s = new AppSettings { OverlayTransparency = input };
+        Assert.Equal(expected, SettingsNormalizer.Normalize(s).OverlayTransparency);
+    }
+
+    [Theory]
     [InlineData(10, 150)]
     [InlineData(300, 300)]
     [InlineData(5000, 1000)]

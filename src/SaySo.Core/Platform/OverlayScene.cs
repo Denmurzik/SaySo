@@ -20,7 +20,6 @@ namespace SaySo.Core.Platform;
 internal sealed unsafe class OverlayScene : IDisposable
 {
     private static readonly Color Surface = Color.FromArgb(0xFF, 0x2C, 0x2C, 0x2C);
-    private const float LuminosityAlpha = 0.30f; // слой «светимости» (Luminosity без Win2D — приближение слоями); итог α ≈ 0,4: подложка просвечивает
     private const float TintAlpha = 0.15f;
     private const float SolidAlpha = 0.96f;
     private static readonly Color Border = Color.FromArgb(0x66, 0x75, 0x75, 0x75); // SurfaceStrokeColorDefault, снят с рамки окна
@@ -45,7 +44,7 @@ internal sealed unsafe class OverlayScene : IDisposable
     private int _hideGeneration;
 
     /// <exception cref="Exception">Компоновщик или цель окна не созданы (вызывающий пишет в журнал и не показывает плашку).</exception>
-    public OverlayScene(nint hwnd, OverlayLayout layout, OverlayMaterial material, bool reducedMotion)
+    public OverlayScene(nint hwnd, OverlayLayout layout, OverlayMaterial material, float luminosityAlpha, bool reducedMotion)
     {
         _layout = layout;
         _reducedMotion = reducedMotion;
@@ -54,7 +53,7 @@ internal sealed unsafe class OverlayScene : IDisposable
             CreateQueue();
             _compositor = new Compositor();
             _target = CreateTarget(_compositor, hwnd);
-            Build(material);
+            Build(material, luminosityAlpha);
         }
         catch
         {
@@ -130,7 +129,7 @@ internal sealed unsafe class OverlayScene : IDisposable
         }
     }
 
-    private void Build(OverlayMaterial material)
+    private void Build(OverlayMaterial material, float luminosityAlpha)
     {
         var c = C;
         var height = _layout.CapsuleHeight;
@@ -164,7 +163,7 @@ internal sealed unsafe class OverlayScene : IDisposable
         _material = c.CreateContainerVisual();
         _material.Size = box;
         body.Children.InsertAtTop(_material);
-        SetMaterial(material);
+        SetMaterial(material, luminosityAlpha);
 
         _content = c.CreateContainerVisual();
         _content.Size = box;
@@ -195,8 +194,11 @@ internal sealed unsafe class OverlayScene : IDisposable
         target.StartAnimation(property, animation);
     }
 
-    /// <summary>Материал капсулы; меняется и на лету (WM_SETTINGCHANGE «ImmersiveColorSet»).</summary>
-    public void SetMaterial(OverlayMaterial material)
+    /// <summary>Материал капсулы; меняется и на лету (WM_SETTINGCHANGE «ImmersiveColorSet», ползунок прозрачности).</summary>
+    /// <param name="luminosityAlpha">
+    /// Слой «светимости» Acrylic (режим Luminosity без Win2D приближён слоями): чем меньше, тем сильнее просвечивает подложка.
+    /// </param>
+    public void SetMaterial(OverlayMaterial material, float luminosityAlpha)
     {
         var c = C;
         Material = material;
@@ -205,7 +207,7 @@ internal sealed unsafe class OverlayScene : IDisposable
         {
             // Размытие того, что под окном (DWMWA_USE_HOSTBACKDROPBRUSH), затем тонировка по рецепту WinUI (тёмная тема).
             AddLayer(c.CreateHostBackdropBrush());
-            AddLayer(c.CreateColorBrush(WithAlpha(Surface, LuminosityAlpha)));
+            AddLayer(c.CreateColorBrush(WithAlpha(Surface, luminosityAlpha)));
             AddLayer(c.CreateColorBrush(WithAlpha(Surface, TintAlpha)));
         }
         else

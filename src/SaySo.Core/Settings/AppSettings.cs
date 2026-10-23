@@ -33,6 +33,11 @@ public sealed class AppSettings
     /// <summary>Значок в трее Windows. Скрытый: настройки открываются повторным запуском SaySo (ярлык в «Пуске»).</summary>
     public bool ShowTrayIcon { get; set; } = true;
 
+    /// <summary>Прозрачность капсулы плашки, 0…100 % (материал Acrylic). Только Windows.</summary>
+    public int OverlayTransparency { get; set; } = DefaultOverlayTransparency;
+
+    public const int DefaultOverlayTransparency = 50;
+
     /// <summary>Запуск демона с правами администратора (для вставки в админ-окна). Только Windows: на macOS не используется.</summary>
     public bool RunAsAdmin { get; set; }
 
