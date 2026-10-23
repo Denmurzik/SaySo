@@ -177,7 +177,7 @@ Windows must allow desktop apps to use the microphone: *Settings → Privacy & s
 
 ## Settings
 
-Open them from the tray icon (double-click, or right-click → *Settings…* («Настройки…»)). The window is titled “SaySo” and has a side menu that is always open: General («Общие»), Recognition («Распознавание»), Dictionary («Словарь»), Microphone («Микрофон»), History («История»), About («О программе»). The window is a separate process: closing it ends it.
+Open them from the tray icon (double-click, or right-click → *Settings…* («Настройки…»)). The window is titled “SaySo” and has a side menu that is always open: General («Общие»), Recognition («Распознавание»), Dictionary («Словарь»), Microphone («Микрофон»), History («История»), About («О программе»). The window is a separate process: closing it ends it. The icon can be hidden (General → «Значок в трее»); then open the settings by launching SaySo again from the Start menu.
 
 ### Sounds
 

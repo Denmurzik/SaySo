@@ -15,6 +15,7 @@ internal sealed unsafe class LowLevelKeyboardHook : IDisposable
 {
     private const uint RunActions = Native.WM_APP + 1;
     private static LowLevelKeyboardHook? s_current;
+    private static uint s_lastEventTime;
 
     private readonly Func<KeyEvent, bool> _onKey;
     private readonly ConcurrentQueue<Action> _actions = new();
@@ -31,6 +32,7 @@ internal sealed unsafe class LowLevelKeyboardHook : IDisposable
         }
 
         _onKey = onKey;
+        Volatile.Write(ref s_lastEventTime, unchecked((uint)Environment.TickCount)); // свежий хук ещё ничего не пропустил
         _thread = new Thread(Run) { IsBackground = true, Name = "SaySo.KeyboardHook", Priority = ThreadPriority.AboveNormal };
         _thread.Start();
         _ready.Wait();
@@ -40,6 +42,9 @@ internal sealed unsafe class LowLevelKeyboardHook : IDisposable
             throw _startError;
         }
     }
+
+    /// <summary>Время последнего нажатия, которое видел хук (как GetMessageTime): для <see cref="HookWatchdog"/>.</summary>
+    public static uint LastEventTime => Volatile.Read(ref s_lastEventTime);
 
     /// <summary>Выполнить действие на потоке хука (там живёт состояние автомата).</summary>
     public void Post(Action action)
@@ -135,6 +140,7 @@ internal sealed unsafe class LowLevelKeyboardHook : IDisposable
             try
             {
                 var data = (Native.KBDLLHOOKSTRUCT*)lParam;
+                Volatile.Write(ref s_lastEventTime, data->time);
                 var message = (uint)wParam;
                 var e = new KeyEvent(
                     (int)data->vkCode,

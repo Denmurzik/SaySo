@@ -29,6 +29,7 @@ public sealed partial class GeneralPage : UserControl
         SoundsSwitch.IsOn = s.SoundsEnabled;
         FillSoundThemes(s.SoundTheme);
         AutostartSwitch.IsOn = s.AutostartEnabled;
+        TraySwitch.IsOn = s.ShowTrayIcon;
         UpdatesSwitch.IsOn = s.CheckForUpdates;
         AdminSwitch.IsOn = s.RunAsAdmin;
         UpdateAutostartAvailability();
@@ -181,6 +182,22 @@ public sealed partial class GeneralPage : UserControl
         }
 
         _model.Settings.AutostartEnabled = AutostartSwitch.IsOn;
+        SaveOrWarn();
+    }
+
+    private void OnTrayToggled(object sender, RoutedEventArgs e)
+    {
+        if (_loading)
+        {
+            return;
+        }
+
+        if (TraySwitch.IsOn == _model.Settings.ShowTrayIcon)
+        {
+            return;
+        }
+
+        _model.Settings.ShowTrayIcon = TraySwitch.IsOn;
         SaveOrWarn();
     }
 

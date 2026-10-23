@@ -20,7 +20,7 @@ namespace SaySo.Core.Platform;
 internal sealed unsafe class OverlayScene : IDisposable
 {
     private static readonly Color Surface = Color.FromArgb(0xFF, 0x2C, 0x2C, 0x2C);
-    private const float LuminosityAlpha = 0.88f; // слой «светимости» (рецепт Acrylic без режима Luminosity — приближение слоями)
+    private const float LuminosityAlpha = 0.30f; // слой «светимости» (Luminosity без Win2D — приближение слоями); итог α ≈ 0,4: подложка просвечивает
     private const float TintAlpha = 0.15f;
     private const float SolidAlpha = 0.96f;
     private static readonly Color Border = Color.FromArgb(0x66, 0x75, 0x75, 0x75); // SurfaceStrokeColorDefault, снят с рамки окна

@@ -369,8 +369,7 @@ internal sealed unsafe class OverlayWindow : NativeWindow, IDictationOverlay
         var level = _level();
         // Быстрая атака, медленный спад — полоски «дышат», а не дёргаются.
         _smoothed = level > _smoothed ? level : _smoothed * 0.8f + level * 0.2f;
-        Array.Copy(_levels, 1, _levels, 0, _levels.Length - 1);
-        _levels[^1] = _smoothed;
+        OverlayMotion.PushLevelFromCenter(_levels, _smoothed);
         try
         {
             _scene?.SetLevels(_levels);

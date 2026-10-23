@@ -26,6 +26,7 @@ internal sealed unsafe class TrayIcon(
     private bool _added;
     private bool _configured;
     private bool _addFailed; // был неудачный NIM_ADD: значок мог появиться позже
+    private bool _hidden;    // пользователь скрыл значок: состояние запоминается, в трей ничего не попадает
     private nint _icon;
     private string _tooltip = "SaySo";
     private int _retries;
@@ -39,6 +40,11 @@ internal sealed unsafe class TrayIcon(
         _configured = true;
         _icon = icon;
         _tooltip = tooltip;
+        if (_hidden)
+        {
+            return;
+        }
+
         var data = Build();
         if (_added)
         {
@@ -86,10 +92,39 @@ internal sealed unsafe class TrayIcon(
         return _notify(Native.NIM_MODIFY, &data);
     }
 
+    /// <summary>Скрыть значок из трея или вернуть его с последним состоянием и подсказкой.</summary>
+    public void SetVisible(bool visible)
+    {
+        if (visible != _hidden)
+        {
+            return; // уже так
+        }
+
+        _hidden = !visible;
+        if (_hidden)
+        {
+            StopRetries();
+            if (_added || _addFailed)
+            {
+                var data = Build();
+                _notify(Native.NIM_DELETE, &data);
+            }
+
+            _added = false;
+            _addFailed = false;
+            return;
+        }
+
+        if (_configured)
+        {
+            Set(_icon, _tooltip);
+        }
+    }
+
     /// <summary>После перезапуска Проводника значок нужно добавить заново.</summary>
     public void Recreate()
     {
-        if (!_configured)
+        if (!_configured || _hidden)
         {
             return;
         }

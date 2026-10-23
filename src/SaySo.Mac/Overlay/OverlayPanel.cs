@@ -255,8 +255,7 @@ internal sealed class OverlayPanel : IDictationOverlay, IDisposable
         var level = _level();
         // Быстрая атака, медленный спад — полоски «дышат», а не дёргаются (как в Windows).
         _smoothed = level > _smoothed ? level : _smoothed * 0.8f + level * 0.2f;
-        Array.Copy(_levels, 1, _levels, 0, _levels.Length - 1);
-        _levels[^1] = _smoothed;
+        OverlayMotion.PushLevelFromCenter(_levels, _smoothed);
         scene.SetLevels(_levels);
     }
 

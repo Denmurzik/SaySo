@@ -41,6 +41,7 @@ internal sealed class DaemonWindow : IDisposable
         AllowFromLowerIntegrity(TrayMessage);
         AllowFromLowerIntegrity(Native.WM_SETTINGCHANGE);
         Native.WTSRegisterSessionNotification(_window.Handle, Native.NOTIFY_FOR_THIS_SESSION);
+        RegisterKeyboardInput(_window.Handle, remove: false);
     }
 
     public event Action<HotkeyAction>? HotkeyPressed;
@@ -59,6 +60,9 @@ internal sealed class DaemonWindow : IDisposable
 
     /// <summary>Выход из сна/гибернации (PBT_APMRESUMEAUTOMATIC): хук мог быть снят системой.</summary>
     public event Action? PowerResumed;
+
+    /// <summary>Нажатие или отпускание клавиши в любом окне (Raw Input); аргумент — время события, как GetMessageTime.</summary>
+    public event Action<uint>? KeyboardInput;
 
     /// <summary>
     /// WM_CLOSE (например, <c>taskkill</c> без /F): штатное завершение, как по IPC-сообщению Quit.
@@ -98,7 +102,24 @@ internal sealed class DaemonWindow : IDisposable
         }
 
         Native.WTSUnRegisterSessionNotification(_window.Handle);
+        RegisterKeyboardInput(0, remove: true);
         _window.Dispose();
+    }
+
+    // Raw Input клавиатуры с RIDEV_INPUTSINK: события приходят и без фокуса. Нужны сторожу хука (HookWatchdog).
+    private static unsafe void RegisterKeyboardInput(nint hwnd, bool remove)
+    {
+        var device = new Native.RAWINPUTDEVICE
+        {
+            usUsagePage = 0x01, // Generic Desktop
+            usUsage = 0x06,     // Keyboard
+            dwFlags = remove ? Native.RIDEV_REMOVE : Native.RIDEV_INPUTSINK,
+            hwndTarget = hwnd,
+        };
+        if (!Native.RegisterRawInputDevices(&device, 1, (uint)sizeof(Native.RAWINPUTDEVICE)) && !remove)
+        {
+            Log.Info($"RegisterRawInputDevices: код {System.Runtime.InteropServices.Marshal.GetLastPInvokeError()}; сторож хука выключен");
+        }
     }
 
     private unsafe void AllowFromLowerIntegrity(uint message) =>
@@ -131,6 +152,9 @@ internal sealed class DaemonWindow : IDisposable
             case Native.WM_CLOSE:
                 CloseRequested?.Invoke();
                 return 0;
+            case Native.WM_INPUT:
+                KeyboardInput?.Invoke(unchecked((uint)Native.GetMessageTime()));
+                return null; // DefWindowProc освобождает данные Raw Input
             case Native.WM_TIMER:
                 if (_timers.TryGetValue(wParam, out var timer))
                 {

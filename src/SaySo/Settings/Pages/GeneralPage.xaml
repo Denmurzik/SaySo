@@ -89,6 +89,21 @@
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
                     <StackPanel VerticalAlignment="Center">
+                        <TextBlock Text="Значок в трее" Style="{StaticResource CardTitle}" />
+                        <TextBlock Style="{StaticResource CardDescription}"
+                                   Text="Если значок скрыт, SaySo продолжает работать. Чтобы открыть настройки, запустите SaySo ещё раз из меню «Пуск»." />
+                    </StackPanel>
+                    <ToggleSwitch x:Name="TraySwitch" Grid.Column="1" OnContent="Вкл" OffContent="Выкл" Toggled="OnTrayToggled" />
+                </Grid>
+            </Border>
+
+            <Border Style="{StaticResource SettingsCard}">
+                <Grid ColumnSpacing="16">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel VerticalAlignment="Center">
                         <TextBlock Text="Проверять обновления автоматически" Style="{StaticResource CardTitle}" />
                         <TextBlock Style="{StaticResource CardDescription}"
                                    Text="Раз в сутки SaySo спрашивает у GitHub, нет ли новой версии. Ключи и тексты диктовок не отправляются. Проверить вручную можно на странице «О программе»." />

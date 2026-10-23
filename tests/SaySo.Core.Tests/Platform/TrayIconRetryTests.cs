@@ -57,6 +57,38 @@ public class TrayIconRetryTests
     private int Count(uint message) => _calls.Count(c => c == message);
 
     [Fact]
+    public void Hidden_RemovesIcon_KeepsState_AndShowsItBack()
+    {
+        using var tray = Create();
+        tray.Set(1, "SaySo");
+        Assert.True(_exists);
+
+        tray.SetVisible(false);
+        Assert.False(_exists);
+        Assert.False(tray.IsAdded);
+
+        tray.Set(2, "Запись");  // смена состояния, пока значок скрыт
+        tray.Recreate();          // перезапуск Проводника
+        Assert.False(_exists);
+        Assert.Equal(1, Count(Native.NIM_ADD));
+
+        tray.SetVisible(true);
+        Assert.True(_exists);
+        Assert.True(tray.IsAdded);
+        Assert.Equal(2, Count(Native.NIM_ADD));
+    }
+
+    [Fact]
+    public void HiddenBeforeFirstSet_NeverAdds()
+    {
+        using var tray = Create();
+        tray.SetVisible(false);
+        tray.Set(1, "SaySo");
+        Assert.Empty(_calls);
+        Assert.False(tray.ShowBalloon("t", "x"));
+    }
+
+    [Fact]
     public void AddFails_RetriesAfterTimer_UntilAdded()
     {
         _addFailures = 2;

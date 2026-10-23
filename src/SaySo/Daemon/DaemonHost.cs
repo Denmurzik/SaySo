@@ -53,6 +53,7 @@ internal sealed class DaemonHost : IDisposable
     private bool _failingSession;
     private bool _disposing;
     private string? _pendingReinstall;
+    private long _watchdogReinstalledAt = long.MinValue / 2;
     private nint _pressTarget;
     private nint _dictationTarget;
     private bool _quitAfterSession;
@@ -107,6 +108,7 @@ internal sealed class DaemonHost : IDisposable
         _window.SessionLockChanged += OnSessionLockChanged;
         _window.PowerResumed += () => TryReinstallHotkey("выход из сна", cancelRecording: true);
         _window.PowerResumed += _updates.OnResume;
+        _window.KeyboardInput += OnKeyboardInput;
         _window.ThemeChanged += RefreshIcons;
         _dictation.SessionEnded += OnSessionEnded;
         // Плашка освобождает компоновщик только после анимации скрытия (сообщение висит до 3 с): память возвращаем после этого.
@@ -117,6 +119,7 @@ internal sealed class DaemonHost : IDisposable
                 ScheduleTrim(TimeSpan.FromSeconds(1));
             }
         };
+        _tray.SetVisible(_settings.ShowTrayIcon);
         UpdateTray(TrayState.Idle);
         ScheduleTrim(TimeSpan.FromSeconds(3));
         _updates.OnStart(); // одноразовый таймер на 60 с, если с прошлой проверки прошли сутки
@@ -482,6 +485,7 @@ internal sealed class DaemonHost : IDisposable
                 }
 
                 SyncAutostart();
+                _tray.SetVisible(_settings.ShowTrayIcon);
                 UpdateTray(_dictation.State == DictationState.Idle ? RestingTrayState : _trayState);
                 break;
             case IpcProtocol.SuspendHotkey:
@@ -576,9 +580,28 @@ internal sealed class DaemonHost : IDisposable
         ReconcileHotkey();
     }
 
+    // Хук снят молча (долгий простой), а разблокировки, сна или щелчка по значку не было: первое же нажатие,
+    // которое пришло через Raw Input мимо хука, ставит его заново. Удерживаемую клавишу новый хук подхватит автоповтором.
+    private void OnKeyboardInput(uint time)
+    {
+        if (_hotkey is null || !HookWatchdog.HookMissed(time, LowLevelKeyboardHook.LastEventTime))
+        {
+            return;
+        }
+
+        var now = Environment.TickCount64;
+        if (now - _watchdogReinstalledAt < (long)HookWatchdog.MinReinstallInterval.TotalMilliseconds)
+        {
+            return;
+        }
+
+        _watchdogReinstalledAt = now;
+        TryReinstallHotkey("хук снят системой", allowKeysDown: true);
+    }
+
     // Windows молча снимает WH_KEYBOARD_LL после тайм-аута колбэка. Таймеров в простое нет (§1/§11):
-    // хук переустанавливается только по событиям (разблокировка, выход из сна, щелчок по значку), и только в простое.
-    private void TryReinstallHotkey(string reason, bool cancelRecording = false)
+    // хук переустанавливается только по событиям (разблокировка, выход из сна, щелчок по значку, нажатие мимо хука), и только в простое.
+    private void TryReinstallHotkey(string reason, bool cancelRecording = false, bool allowKeysDown = false)
     {
         if (_dictation.State != DictationState.Idle)
         {
@@ -594,7 +617,7 @@ internal sealed class DaemonHost : IDisposable
         }
 
         _pendingReinstall = null;
-        if (_settings.Hotkey.Keys.Any(KeyboardInjector.IsKeyDown))
+        if (!allowKeysDown && _settings.Hotkey.Keys.Any(KeyboardInjector.IsKeyDown))
         {
             return;
         }

@@ -30,6 +30,9 @@ public sealed class AppSettings
 
     public bool AutostartEnabled { get; set; } = true;
 
+    /// <summary>Значок в трее Windows. Скрытый: настройки открываются повторным запуском SaySo (ярлык в «Пуске»).</summary>
+    public bool ShowTrayIcon { get; set; } = true;
+
     /// <summary>Запуск демона с правами администратора (для вставки в админ-окна). Только Windows: на macOS не используется.</summary>
     public bool RunAsAdmin { get; set; }
 

@@ -9,6 +9,9 @@ internal static unsafe partial class Native
     public const uint MAPVK_VK_TO_VSC = 0;
     public const uint CF_UNICODETEXT = 13;
     public const uint GMEM_MOVEABLE = 0x0002;
+    public const uint WM_INPUT = 0x00FF;
+    public const uint RIDEV_REMOVE = 0x00000001;
+    public const uint RIDEV_INPUTSINK = 0x00000100;
 
     [StructLayout(LayoutKind.Sequential)]
     public struct KEYBDINPUT
@@ -47,6 +50,22 @@ internal static unsafe partial class Native
         public uint type;
         public InputUnion u;
     }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct RAWINPUTDEVICE
+    {
+        public ushort usUsagePage;
+        public ushort usUsage;
+        public uint dwFlags;
+        public nint hwndTarget;
+    }
+
+    [LibraryImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool RegisterRawInputDevices(RAWINPUTDEVICE* devices, uint count, uint size);
+
+    [LibraryImport("user32.dll")]
+    public static partial int GetMessageTime();
 
     [LibraryImport("user32.dll", SetLastError = true)]
     public static partial uint SendInput(uint count, INPUT* inputs, int size);

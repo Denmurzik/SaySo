@@ -5,6 +5,17 @@ namespace SaySo.Core.Tests.Overlay;
 
 public class OverlayMotionTests
 {
+    [Fact]
+    public void PushLevelFromCenter_NewestInMiddle_OlderSpreadOutwards()
+    {
+        var levels = new float[OverlayMotion.BarCount];
+        OverlayMotion.PushLevelFromCenter(levels, 0.3f);
+        OverlayMotion.PushLevelFromCenter(levels, 0.6f);
+        OverlayMotion.PushLevelFromCenter(levels, 0.9f);
+
+        Assert.Equal([0f, 0.3f, 0.6f, 0.9f, 0.6f, 0.3f, 0f], levels);
+    }
+
     [Theory]
     [InlineData(0f)]
     [InlineData(0.2f)]

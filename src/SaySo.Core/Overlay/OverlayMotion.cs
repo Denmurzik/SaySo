@@ -250,6 +250,26 @@ public static class OverlayMotion
         return bars;
     }
 
+    /// <summary>
+    /// Новый уровень встаёт в средний столбик, прежние расходятся от центра к краям (симметрично):
+    /// волна бежит из середины в обе стороны.
+    /// </summary>
+    public static void PushLevelFromCenter(Span<float> levels, float level)
+    {
+        var mid = levels.Length / 2;
+        for (var i = 0; i < mid; i++)
+        {
+            levels[i] = levels[i + 1];
+        }
+
+        for (var i = levels.Length - 1; i > mid; i--)
+        {
+            levels[i] = levels[i - 1];
+        }
+
+        levels[mid] = level;
+    }
+
     /// <summary>Центры трёх точек обработки (радиус <see cref="DotRadius"/>·scale).</summary>
     public static (float X, float Y)[] DotCenters(OverlayLayout layout)
     {
